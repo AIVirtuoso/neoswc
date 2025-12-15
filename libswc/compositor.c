@@ -43,6 +43,7 @@
 #include "surface.h"
 #include "util.h"
 #include "view.h"
+#include "window.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -595,6 +596,14 @@ raise_window(struct compositor_view *view)
 	                           (uint32_t)(view->extents.x2 - view->extents.x1),
 	                           (uint32_t)(view->extents.y2 - view->extents.y1));
 	schedule_updates(screens);
+}
+
+EXPORT struct swc_window *
+swc_window_at(int32_t x, int32_t y)
+{
+	struct compositor_view *view = window_view(view_at(x, y));
+
+	return view ? &view->window->base : NULL;
 }
 
 struct compositor_view *

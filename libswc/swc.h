@@ -298,6 +298,13 @@ void swc_window_begin_resize(struct swc_window *window, uint32_t edges);
  */
 void swc_window_end_resize(struct swc_window *window);
 
+/**
+ * returns the topmost window at any given compositor global coordinates
+ *
+ * returns null if there is no window at that point
+ */
+struct swc_window *swc_window_at(int32_t x, int32_t y);
+
 /* }}} */
 
 /* Bindings {{{ */
