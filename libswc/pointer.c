@@ -27,6 +27,7 @@
 #include "internal.h"
 #include "plane.h"
 #include "screen.h"
+#include "seat.h"
 #include "shm.h"
 #include "surface.h"
 #include "util.h"
@@ -35,6 +36,26 @@
 #include <assert.h>
 #include <stdio.h>
 #include <wld/wld.h>
+
+EXPORT void
+swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state)
+{
+	struct pointer *pointer = swc.seat ? swc.seat->pointer : NULL;
+	struct wl_resource *resource;
+	uint32_t serial;
+
+	if (!pointer || wl_list_empty(&pointer->focus.active))
+		return;
+
+	serial = wl_display_next_serial(swc.display);
+	wl_resource_for_each (resource, &pointer->focus.active)
+		wl_pointer_send_button(resource, serial, time, button, state);
+	wl_resource_for_each (resource, &pointer->focus.active) {
+		if (wl_resource_get_version(resource) >= WL_POINTER_FRAME_SINCE_VERSION)
+			wl_pointer_send_frame(resource);
+	}
+	pointer->client_axis_source = -1;
+}
 
 static void
 enter(struct input_focus_handler *handler, struct wl_list *resources, struct compositor_view *view)

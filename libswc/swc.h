@@ -35,6 +35,38 @@ struct libinput_device;
 struct wl_display;
 struct wl_event_loop;
 
+/**
+ * gett the current cursor position
+ *
+ * The returned coordinates are in compositor-global space, in wl_fixed_t
+ * (24.8) fixed-point units, but exposed as raw int32_t to avoid needing
+ * wayland headers
+ *
+ */
+bool swc_cursor_position(int32_t *x, int32_t *y);
+
+/**
+ * Send a pointer button event to the currently focused client.
+ *
+ * This is intended for window managers which intercept button events (for
+ * example for mouse chords) but want normal clicks to still reach clients.
+ */
+void swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state);
+
+/**
+ * draw [or update] a simple box overlay
+ *
+ * box is defined by two diagonally opposite corners in compositor-global
+ * coordinates. this draws only the border. Call swc_overlay_clear() to remove
+ * it
+ */
+void swc_overlay_set_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, uint32_t border_width);
+
+/**
+ * Clear the current overlay, if any.
+ */
+void swc_overlay_clear(void);
+
 /* Rectangles {{{ */
 
 struct swc_rectangle {

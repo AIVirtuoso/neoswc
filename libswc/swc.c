@@ -109,6 +109,25 @@ swc_deactivate(void)
 }
 
 EXPORT bool
+swc_cursor_position(int32_t *x, int32_t *y)
+{
+	if (x)
+		*x = 0;
+	if (y)
+		*y = 0;
+
+	if (!swc.seat || !swc.seat->pointer)
+		return false;
+
+	if (x)
+		*x = swc.seat->pointer->x;
+	if (y)
+		*y = swc.seat->pointer->y;
+
+	return true;
+}
+
+EXPORT bool
 swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, const struct swc_manager *manager)
 {
 	swc.display = display;

@@ -286,18 +286,23 @@ static void
 focus(struct window *window)
 {
 	struct xdg_toplevel *toplevel = wl_container_of(window, toplevel, window);
+	uint32_t width = window->view->base.geometry.width;
+	uint32_t height = window->view->base.geometry.height;
 
 	add_state(toplevel, XDG_TOPLEVEL_STATE_ACTIVATED);
-	send_configure(toplevel, -1, -1);
+	/* dont send  0x0 on focus change */
+	send_configure(toplevel, width ? (int32_t)width : -1, height ? (int32_t)height : -1);
 }
 
 static void
 unfocus(struct window *window)
 {
 	struct xdg_toplevel *toplevel = wl_container_of(window, toplevel, window);
+	uint32_t width = window->view->base.geometry.width;
+	uint32_t height = window->view->base.geometry.height;
 
 	remove_state(toplevel, XDG_TOPLEVEL_STATE_ACTIVATED);
-	send_configure(toplevel, -1, -1);
+	send_configure(toplevel, width ? (int32_t)width : -1, height ? (int32_t)height : -1);
 }
 
 static void
