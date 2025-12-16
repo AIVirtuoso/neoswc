@@ -267,8 +267,10 @@ void swc_window_set_geometry(struct swc_window *window, const struct swc_rectang
  *
  * NOTE: The window's geometry remains unchanged, and should be updated if a
  *       fixed top-left corner of the border is desired.
+ * 
+ * info from dalem: unsure how much double borders break!
  */
-void swc_window_set_border(struct swc_window *window, uint32_t color, uint32_t width);
+void swc_window_set_border(struct swc_window *window, uint32_t inner_border_color, uint32_t inner_border_width, uint32_t outer_border_color, uint32_t outer_border_width);
 
 /**
  * Begin an interactive move of the specified window.

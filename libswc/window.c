@@ -249,13 +249,15 @@ swc_window_set_geometry(struct swc_window *window, const struct swc_rectangle *g
 }
 
 EXPORT void
-swc_window_set_border(struct swc_window *window, uint32_t border_color, uint32_t border_width)
+swc_window_set_border(struct swc_window *window, uint32_t inner_border_color, uint32_t inner_border_width, 
+		uint32_t outer_border_color, uint32_t outer_border_width)
 {
 	struct compositor_view *view = INTERNAL(window)->view;
 
-	compositor_view_set_border_color(view, border_color);
-	compositor_view_set_border_width(view, border_width);
+	compositor_view_set_border_color(view, outer_border_color, inner_border_color);
+	compositor_view_set_border_width(view, outer_border_width, inner_border_width);
 }
+
 
 EXPORT void
 swc_window_begin_move(struct swc_window *window)

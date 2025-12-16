@@ -212,15 +212,38 @@ repaint_view(struct target *target, struct compositor_view *view, pixman_region3
 		wld_copy_region(swc.drm->renderer, view->buffer, geom->x - target_geom->x, geom->y - target_geom->y, &view_damage);
 	}
 
-	pixman_region32_fini(&view_damage);
+	pixman_region32_t in_rect;
+	pixman_region32_init_rect(&in_rect, 
+			geom->x - view->border.inwidth, 
+			geom->y - view->border.inwidth, 
+			geom->width + (2 * view->border.inwidth), 
+			geom->height + (2 * view->border.inwidth));
+
+	pixman_region32_t out_border;
+	pixman_region32_init(&out_border);
+	pixman_region32_subtract(&out_border, &border_damage, &in_rect);
+
+	pixman_region32_t in_border;
+	pixman_region32_init(&in_border);
+	pixman_region32_subtract(&in_border, &in_rect, &view_region);
+		
 
 	/* Draw border */
-	if (pixman_region32_not_empty(&border_damage)) {
-		pixman_region32_translate(&border_damage, -target_geom->x, -target_geom->y);
-		wld_fill_region(swc.drm->renderer, view->border.color, &border_damage);
+	if (view->border.outwidth > 0 && pixman_region32_not_empty(&out_border)) {
+		pixman_region32_translate(&out_border, -target_geom->x, -target_geom->y);
+		wld_fill_region(swc.drm->renderer, view->border.outcolor, &out_border);
+	}
+
+	if (view->border.inwidth > 0 && pixman_region32_not_empty(&in_border)) {
+		pixman_region32_translate(&in_border, -target_geom->x, -target_geom->y);
+		wld_fill_region(swc.drm->renderer, view->border.incolor, &in_border);
 	}
 
 	pixman_region32_fini(&border_damage);
+	pixman_region32_fini(&in_rect);
+	pixman_region32_fini(&out_border);
+	pixman_region32_fini(&in_border);
+
 }
 
 static void
@@ -361,20 +384,25 @@ static void
 damage_view(struct compositor_view *view)
 {
 	damage_below_view(view);
-	view->border.damaged = true;
-}
+	view->border.damaged_border1 = true;
+	view->border.damaged_border2 = true;
 
+}
 static void
 update_extents(struct compositor_view *view)
 {
-	view->extents.x1 = view->base.geometry.x - view->border.width;
-	view->extents.y1 = view->base.geometry.y - view->border.width;
-	view->extents.x2 = view->base.geometry.x + view->base.geometry.width + view->border.width;
-	view->extents.y2 = view->base.geometry.y + view->base.geometry.height + view->border.width;
+	uint32_t total_border = view->border.outwidth + view->border.inwidth;
+
+	view->extents.x1 = view->base.geometry.x - total_border;
+	view->extents.y1 = view->base.geometry.y - total_border;
+	view->extents.x2 = view->base.geometry.x + view->base.geometry.width + total_border;
+	view->extents.y2 = view->base.geometry.y + view->base.geometry.height + total_border;
 
 	/* Damage border. */
-	view->border.damaged = true;
+	view->border.damaged_border1 = true;
+	view->border.damaged_border2 = true;
 }
+
 
 static void
 schedule_updates(uint32_t screens)
@@ -590,7 +618,7 @@ raise_window(struct compositor_view *view)
 	wl_list_remove(&view->link);
 	wl_list_insert(insert_after, &view->link);
 
-	view->border.damaged = true;
+	view->border.damaged_border1 = true;
 	pixman_region32_union_rect(&compositor.damage, &compositor.damage,
 	                           view->extents.x1, view->extents.y1,
 	                           (uint32_t)(view->extents.x2 - view->extents.x1),
@@ -626,9 +654,12 @@ compositor_create_view(struct surface *surface)
 	view->extents.y1 = 0;
 	view->extents.x2 = 0;
 	view->extents.y2 = 0;
-	view->border.width = 0;
-	view->border.color = 0x000000;
-	view->border.damaged = false;
+	view->border.outwidth = 0;
+	view->border.outcolor = 0x000000;
+	view->border.damaged_border1 = false;
+	view->border.inwidth = 0;
+	view->border.incolor = 0x000000;
+	view->border.damaged_border2 = false;
 	pixman_region32_init(&view->clip);
 	wl_signal_init(&view->destroy_signal);
 	surface_set_view(surface, &view->base);
@@ -711,13 +742,16 @@ compositor_view_hide(struct compositor_view *view)
 }
 
 void
-compositor_view_set_border_width(struct compositor_view *view, uint32_t width)
+compositor_view_set_border_width(struct compositor_view *view, uint32_t outwidth, uint32_t inwidth)
 {
-	if (view->border.width == width)
+	if (view->border.outwidth == outwidth && view->border.inwidth == inwidth)
 		return;
 
-	view->border.width = width;
-	view->border.damaged = true;
+	view->border.outwidth = outwidth;
+	view->border.damaged_border1 = true;
+
+	view->border.inwidth = inwidth;
+	view->border.damaged_border2 = true;
 
 	/* XXX: Damage above surface for transparent surfaces? */
 
@@ -726,19 +760,22 @@ compositor_view_set_border_width(struct compositor_view *view, uint32_t width)
 }
 
 void
-compositor_view_set_border_color(struct compositor_view *view, uint32_t color)
+compositor_view_set_border_color(struct compositor_view *view, uint32_t outcolor, uint32_t incolor)
 {
-	if (view->border.color == color)
+	if (view->border.outcolor == outcolor && view->border.incolor == incolor)
 		return;
 
-	view->border.color = color;
-	view->border.damaged = true;
+	view->border.outcolor = outcolor;
+	view->border.damaged_border1 = true;
+
+	view->border.incolor = incolor;
+	view->border.damaged_border2 = true;
+	
 
 	/* XXX: Damage above surface for transparent surfaces? */
 
 	update(&view->base);
 }
-
 /* }}} */
 
 static void
@@ -781,7 +818,8 @@ calculate_damage(void)
 			pixman_region32_clear(surface_damage);
 		}
 
-		if (view->border.damaged) {
+                /* redraw entire thingy if either */
+		if (view->border.damaged_border1 || view->border.damaged_border2) {
 			pixman_region32_t border_region, view_region;
 
 			pixman_region32_init_with_extents(&border_region, &view->extents);
@@ -793,8 +831,6 @@ calculate_damage(void)
 
 			pixman_region32_fini(&border_region);
 			pixman_region32_fini(&view_region);
-
-			view->border.damaged = false;
 		}
 	}
 

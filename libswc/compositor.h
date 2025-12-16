@@ -64,9 +64,16 @@ struct compositor_view {
 	pixman_region32_t clip;
 
 	struct {
-		uint32_t width;
-		uint32_t color;
-		bool damaged;
+		uint32_t outwidth;
+		uint32_t outcolor;
+
+		bool damaged_border1;
+		
+		/* sir, a second border has hit the compositor! */
+		uint32_t inwidth;
+		uint32_t incolor;
+	
+		bool damaged_border2;
 	} border;
 
 	struct wl_list link;
@@ -87,7 +94,7 @@ void compositor_view_set_parent(struct compositor_view *view, struct compositor_
 void compositor_view_show(struct compositor_view *view);
 void compositor_view_hide(struct compositor_view *view);
 
-void compositor_view_set_border_color(struct compositor_view *view, uint32_t color);
-void compositor_view_set_border_width(struct compositor_view *view, uint32_t width);
+void compositor_view_set_border_color(struct compositor_view *view, uint32_t outcolor, uint32_t incolor);
+void compositor_view_set_border_width(struct compositor_view *view, uint32_t outwidth, uint32_t inwidth);
 
 #endif
