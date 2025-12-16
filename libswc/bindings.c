@@ -134,9 +134,10 @@ static bool
 handle_binding(uint32_t time, struct press *press, uint32_t state, struct binding *(*find_binding)(uint32_t, uint32_t))
 {
 	struct binding *binding;
+	uint32_t modifiers = swc.seat && swc.seat->keyboard ? swc.seat->keyboard->modifiers : 0;
 
 	if (state) {
-		binding = find_binding(swc.seat->keyboard->modifiers, press->value);
+		binding = find_binding(modifiers, press->value);
 
 		if (!binding)
 			return false;
@@ -170,10 +171,11 @@ handle_axis(struct pointer_handler *handler, uint32_t time, enum wl_pointer_axis
 	(void)handler;
 	(void)source;
 
-	struct axis_binding *binding = find_axis_binding(swc.seat->keyboard->modifiers, axis);
+	uint32_t modifiers = swc.seat && swc.seat->keyboard ? swc.seat->keyboard->modifiers : 0;
+	struct axis_binding *binding = find_axis_binding(modifiers, axis);
 	int32_t delta120 = value120;
 
-	if (!binding)
+	if (!binding || !binding->handler)
 		return false;
 
 	if (!delta120 && value) {
