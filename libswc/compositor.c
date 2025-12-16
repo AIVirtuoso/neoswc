@@ -634,6 +634,98 @@ swc_window_at(int32_t x, int32_t y)
 	return view ? &view->window->base : NULL;
 }
 
+static struct compositor_view *
+view_for_window(struct swc_window *base)
+{
+	struct window *window;
+
+	if (!base)
+		return NULL;
+
+	window = (struct window *)base;
+	return window->view;
+}
+
+static struct compositor_view *
+prev_window_view(struct compositor_view *view)
+{
+	struct wl_list *link;
+	struct compositor_view *other;
+
+	for (link = view->link.prev; link != &compositor.views; link = link->prev) {
+		other = wl_container_of(link, other, link);
+
+		if (other->visible && other->window)
+			return other;
+	}
+
+	return NULL;
+}
+
+static struct compositor_view *
+next_window_view(struct compositor_view *view)
+{
+	struct wl_list *link;
+	struct compositor_view *other;
+
+	for (link = view->link.next; link != &compositor.views; link = link->next) {
+		other = wl_container_of(link, other, link);
+
+		if (other->visible && other->window)
+			return other;
+	}
+
+	return NULL;
+}
+
+static void
+damage_views(struct compositor_view *a, struct compositor_view *b)
+{
+	uint32_t screens = a->base.screens | (b ? b->base.screens : 0);
+
+	a->border.damaged = true;
+	pixman_region32_union_rect(&compositor.damage, &compositor.damage,
+	                           a->extents.x1, a->extents.y1,
+	                           (uint32_t)(a->extents.x2 - a->extents.x1),
+	                           (uint32_t)(a->extents.y2 - a->extents.y1));
+
+	if (b) {
+		b->border.damaged = true;
+		pixman_region32_union_rect(&compositor.damage, &compositor.damage,
+		                           b->extents.x1, b->extents.y1,
+		                           (uint32_t)(b->extents.x2 - b->extents.x1),
+		                           (uint32_t)(b->extents.y2 - b->extents.y1));
+	}
+
+	schedule_updates(screens);
+}
+
+EXPORT void
+swc_window_stack(struct swc_window *window, int32_t direction)
+{
+	struct compositor_view *view = view_for_window(window);
+	struct compositor_view *other = NULL;
+
+	if (!view || !view->visible || direction == 0)
+		return;
+
+	if (direction < 0) {
+		other = prev_window_view(view);
+		if (!other)
+			return;
+		wl_list_remove(&view->link);
+		wl_list_insert(other->link.prev, &view->link);
+	} else {
+		other = next_window_view(view);
+		if (!other)
+			return;
+		wl_list_remove(&view->link);
+		wl_list_insert(&other->link, &view->link);
+	}
+
+	damage_views(view, other);
+}
+
 struct compositor_view *
 compositor_create_view(struct surface *surface)
 {

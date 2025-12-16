@@ -40,6 +40,13 @@ struct binding {
 	void *data;
 };
 
+struct axis_binding {
+	uint32_t axis;
+	uint32_t modifiers;
+	swc_axis_binding_handler handler;
+	void *data;
+};
+
 static bool handle_key(struct keyboard *keyboard, uint32_t time, struct key *key, uint32_t state);
 
 static struct keyboard_handler key_binding_handler = {
@@ -47,12 +54,15 @@ static struct keyboard_handler key_binding_handler = {
 };
 
 static bool handle_button(struct pointer_handler *handler, uint32_t time, struct button *button, uint32_t state);
+static bool handle_axis(struct pointer_handler *handler, uint32_t time, enum wl_pointer_axis axis,
+                        enum wl_pointer_axis_source source, wl_fixed_t value, int value120);
 
 static struct pointer_handler button_binding_handler = {
 	.button = handle_button,
+	.axis = handle_axis,
 };
 
-static struct wl_array key_bindings, button_bindings;
+static struct wl_array key_bindings, button_bindings, axis_bindings;
 
 const struct swc_bindings swc_bindings = {
 	.keyboard_handler = &key_binding_handler,
@@ -107,6 +117,19 @@ find_button_binding(uint32_t modifiers, uint32_t value)
 	return find_binding(&button_bindings, modifiers, value);
 }
 
+static struct axis_binding *
+find_axis_binding(uint32_t modifiers, uint32_t axis)
+{
+	struct axis_binding *binding;
+
+	wl_array_for_each (binding, &axis_bindings) {
+		if (binding->axis == axis && (binding->modifiers == modifiers || binding->modifiers == SWC_MOD_ANY))
+			return binding;
+	}
+
+	return NULL;
+}
+
 static bool
 handle_binding(uint32_t time, struct press *press, uint32_t state, struct binding *(*find_binding)(uint32_t, uint32_t))
 {
@@ -141,10 +164,34 @@ handle_button(struct pointer_handler *handler, uint32_t time, struct button *but
 }
 
 bool
+handle_axis(struct pointer_handler *handler, uint32_t time, enum wl_pointer_axis axis,
+            enum wl_pointer_axis_source source, wl_fixed_t value, int value120)
+{
+	(void)handler;
+	(void)source;
+
+	struct axis_binding *binding = find_axis_binding(swc.seat->keyboard->modifiers, axis);
+	int32_t delta120 = value120;
+
+	if (!binding)
+		return false;
+
+	if (!delta120 && value) {
+		delta120 = (int32_t)(wl_fixed_to_double(value) * 120.0);
+		if (!delta120)
+			delta120 = value > 0 ? 1 : -1;
+	}
+
+	binding->handler(binding->data, time, axis, delta120);
+	return true;
+}
+
+bool
 bindings_initialize(void)
 {
 	wl_array_init(&key_bindings);
 	wl_array_init(&button_bindings);
+	wl_array_init(&axis_bindings);
 
 	return true;
 }
@@ -154,6 +201,7 @@ bindings_finalize(void)
 {
 	wl_array_release(&key_bindings);
 	wl_array_release(&button_bindings);
+	wl_array_release(&axis_bindings);
 }
 
 EXPORT int
@@ -177,6 +225,22 @@ swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t value, 
 		return -ENOMEM;
 
 	binding->value = value;
+	binding->modifiers = modifiers;
+	binding->handler = handler;
+	binding->data = data;
+
+	return 0;
+}
+
+EXPORT int
+swc_add_axis_binding(uint32_t modifiers, uint32_t axis, swc_axis_binding_handler handler, void *data)
+{
+	struct axis_binding *binding;
+
+	if (!(binding = wl_array_add(&axis_bindings, sizeof(*binding))))
+		return -ENOMEM;
+
+	binding->axis = axis;
 	binding->modifiers = modifiers;
 	binding->handler = handler;
 	binding->data = data;

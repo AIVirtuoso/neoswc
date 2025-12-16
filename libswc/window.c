@@ -248,6 +248,18 @@ swc_window_set_geometry(struct swc_window *window, const struct swc_rectangle *g
 	swc_window_set_position(window, geometry->x, geometry->y);
 }
 
+EXPORT bool
+swc_window_get_geometry(const struct swc_window *base, struct swc_rectangle *geometry)
+{
+	struct window *window = INTERNAL((struct swc_window *)base);
+
+	if (!window || !geometry)
+		return false;
+
+	*geometry = window->view->base.geometry;
+	return true;
+}
+
 EXPORT void
 swc_window_set_border(struct swc_window *window, uint32_t inner_border_color, uint32_t inner_border_width, 
 		uint32_t outer_border_color, uint32_t outer_border_width)

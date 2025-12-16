@@ -54,6 +54,16 @@ bool swc_cursor_position(int32_t *x, int32_t *y);
 void swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state);
 
 /**
+ * Send a pointer axis event to the currently focused client.
+ *
+ * This is intended for window managers which intercept axis events (for
+ * example for mouse chords) but want normal scrolling to still reach clients.
+ *
+ * value120 uses the wl_pointer "120 units" convention.
+ */
+void swc_pointer_send_axis(uint32_t time, uint32_t axis, int32_t value120);
+
+/**
  * draw [or update] a simple box overlay
  *
  * box is defined by two diagonally opposite corners in compositor-global
@@ -263,6 +273,11 @@ void swc_window_set_size(struct swc_window *window, uint32_t width, uint32_t hei
 void swc_window_set_geometry(struct swc_window *window, const struct swc_rectangle *geometry);
 
 /**
+ * Get the window's current geometry in compositor-global coordinates.
+ */
+bool swc_window_get_geometry(const struct swc_window *window, struct swc_rectangle *geometry);
+
+/**
  * Set the window's border color and width.
  *
  * NOTE: The window's geometry remains unchanged, and should be updated if a
@@ -307,6 +322,14 @@ void swc_window_end_resize(struct swc_window *window);
  */
 struct swc_window *swc_window_at(int32_t x, int32_t y);
 
+/**
+ * move a window in the stacking order by one step
+ *
+ * direction < 0 moves the window towards the front (higher)
+ * direction > 0 moves the window towards the back (lower)
+ */
+void swc_window_stack(struct swc_window *window, int32_t direction);
+
 /* }}} */
 
 /* Bindings {{{ */
@@ -325,6 +348,7 @@ enum swc_binding_type {
 };
 
 typedef void (*swc_binding_handler)(void *data, uint32_t time, uint32_t value, uint32_t state);
+typedef void (*swc_axis_binding_handler)(void *data, uint32_t time, uint32_t axis, int32_t value120);
 
 /**
  * Register a new input binding.
@@ -332,6 +356,14 @@ typedef void (*swc_binding_handler)(void *data, uint32_t time, uint32_t value, u
  * Returns 0 on success, negative error code otherwise.
  */
 int swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t value, swc_binding_handler handler, void *data);
+
+/**
+ * register a new pointer axis binding
+ *
+ * this will intercept axis events from clients; use swc_pointer_send_axis()
+ * from the handler to forward events when appropriate
+ */
+int swc_add_axis_binding(uint32_t modifiers, uint32_t axis, swc_axis_binding_handler handler, void *data);
 
 /* }}} */
 

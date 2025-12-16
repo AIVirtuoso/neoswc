@@ -57,6 +57,43 @@ swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state)
 	pointer->client_axis_source = -1;
 }
 
+EXPORT void
+swc_pointer_send_axis(uint32_t time, uint32_t axis, int32_t value120)
+{
+	struct pointer *pointer = swc.seat ? swc.seat->pointer : NULL;
+	struct wl_resource *resource;
+	wl_fixed_t value;
+
+	if (!pointer || wl_list_empty(&pointer->focus.active))
+		return;
+
+	value = wl_fixed_from_double((double)value120 / 120.0);
+
+	wl_resource_for_each (resource, &pointer->focus.active) {
+		int ver = wl_resource_get_version(resource);
+
+		if (ver >= WL_POINTER_AXIS_SOURCE_SINCE_VERSION)
+			wl_pointer_send_axis_source(resource, WL_POINTER_AXIS_SOURCE_WHEEL);
+		if (value120) {
+			if (ver >= WL_POINTER_AXIS_VALUE120_SINCE_VERSION)
+				wl_pointer_send_axis_value120(resource, axis, value120);
+			else if (ver >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION)
+				wl_pointer_send_axis_discrete(resource, axis, value120 / 120);
+		}
+
+		if (value)
+			wl_pointer_send_axis(resource, time, axis, value);
+		else if (ver >= WL_POINTER_AXIS_STOP_SINCE_VERSION)
+			wl_pointer_send_axis_stop(resource, time, axis);
+	}
+
+	wl_resource_for_each (resource, &pointer->focus.active) {
+		if (wl_resource_get_version(resource) >= WL_POINTER_FRAME_SINCE_VERSION)
+			wl_pointer_send_frame(resource);
+	}
+	pointer->client_axis_source = -1;
+}
+
 static void
 enter(struct input_focus_handler *handler, struct wl_list *resources, struct compositor_view *view)
 {
