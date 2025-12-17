@@ -35,7 +35,18 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include <wld/wld.h>
+
+static enum swc_cursor_kind cursor_override = SWC_CURSOR_DEFAULT;
+static enum swc_cursor_mode cursor_mode = SWC_CURSOR_MODE_CLIENT;
+
+static struct {
+	const uint32_t *data;
+	uint32_t width, height;
+	int32_t hotspot_x, hotspot_y;
+	bool active;
+} cursor_images[6];
 
 EXPORT void
 swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state)
@@ -205,12 +216,113 @@ update_cursor(struct pointer *pointer)
 	view_move(&pointer->cursor.view, x, y);
 }
 
+static void
+drop_client_cursor_surface(struct pointer *pointer)
+{
+	if (!pointer || !pointer->cursor.surface)
+		return;
+	surface_set_view(pointer->cursor.surface, NULL);
+	wl_list_remove(&pointer->cursor.destroy_listener.link);
+	pointer->cursor.surface = NULL;
+}
+
+static void
+apply_cursor_override(struct pointer *pointer)
+{
+	if (!pointer || pointer->cursor.surface)
+		return;
+
+	pointer_set_cursor(pointer, cursor_left_ptr);
+}
+
+EXPORT void
+swc_set_cursor(enum swc_cursor_kind kind)
+{
+	struct pointer *pointer = swc.seat ? swc.seat->pointer : NULL;
+
+	cursor_override = kind;
+
+	drop_client_cursor_surface(pointer);
+
+	apply_cursor_override(pointer);
+}
+
+EXPORT void
+swc_set_cursor_mode(enum swc_cursor_mode mode)
+{
+	struct pointer *pointer = swc.seat ? swc.seat->pointer : NULL;
+
+	cursor_mode = mode;
+	if (cursor_mode == SWC_CURSOR_MODE_COMPOSITOR)
+		drop_client_cursor_surface(pointer);
+	apply_cursor_override(pointer);
+}
+
+EXPORT void
+swc_set_cursor_image(enum swc_cursor_kind kind,
+                     const uint32_t *argb8888,
+                     uint32_t width, uint32_t height,
+                     int32_t hotspot_x, int32_t hotspot_y)
+{
+	struct pointer *pointer = swc.seat ? swc.seat->pointer : NULL;
+
+	if (kind < 0 || kind >= (int)ARRAY_LENGTH(cursor_images))
+		return;
+	if (!argb8888 || width == 0 || height == 0)
+		return;
+
+	cursor_images[kind].data = argb8888;
+	cursor_images[kind].width = width;
+	cursor_images[kind].height = height;
+	cursor_images[kind].hotspot_x = hotspot_x;
+	cursor_images[kind].hotspot_y = hotspot_y;
+	cursor_images[kind].active = true;
+
+	if (cursor_mode == SWC_CURSOR_MODE_COMPOSITOR)
+		drop_client_cursor_surface(pointer);
+	apply_cursor_override(pointer);
+}
+
+EXPORT void
+swc_clear_cursor_image(enum swc_cursor_kind kind)
+{
+	struct pointer *pointer = swc.seat ? swc.seat->pointer : NULL;
+
+	if (kind < 0 || kind >= (int)ARRAY_LENGTH(cursor_images))
+		return;
+
+	cursor_images[kind].active = false;
+	cursor_images[kind].data = NULL;
+
+	apply_cursor_override(pointer);
+}
+
 void
 pointer_set_cursor(struct pointer *pointer, uint32_t id)
 {
 	struct cursor *cursor = &cursor_metadata[id];
+	const uint32_t *data = cursor_data;
 	union wld_object object = { .ptr = &cursor_data[cursor->offset] };
 	struct wld_buffer *buffer;
+
+	if (id == cursor_left_ptr) {
+		enum swc_cursor_kind kind = cursor_override;
+		if (kind < 0 || kind >= (int)ARRAY_LENGTH(cursor_images))
+			kind = SWC_CURSOR_DEFAULT;
+
+		if (cursor_images[kind].active) {
+			static struct cursor custom_cursor;
+			custom_cursor.width = (int)cursor_images[kind].width;
+			custom_cursor.height = (int)cursor_images[kind].height;
+			custom_cursor.hotspot_x = (int)cursor_images[kind].hotspot_x;
+			custom_cursor.hotspot_y = (int)cursor_images[kind].hotspot_y;
+			custom_cursor.offset = 0;
+
+			cursor = &custom_cursor;
+			data = cursor_images[kind].data;
+			object.ptr = (void *)data;
+		}
+	}
 
 	if (pointer->cursor.internal_buffer)
 		wld_buffer_unreference(pointer->cursor.internal_buffer);
@@ -315,7 +427,6 @@ pointer_initialize(struct pointer *pointer)
 {
 	struct screen *screen = wl_container_of(swc.screens.next, screen, link);
 	struct swc_rectangle *geom = &screen->base.geometry;
-
 	/* Center cursor in the geometry of the first screen. */
 	screen = wl_container_of(swc.screens.next, screen, link);
 	pointer->x = wl_fixed_from_int(geom->x + geom->width / 2);
@@ -407,7 +518,13 @@ set_cursor(struct wl_client *client, struct wl_resource *resource,
 	struct pointer *pointer = wl_resource_get_user_data(resource);
 	struct surface *surface;
 
+	(void)serial;
+
 	if (client != pointer->focus.client)
+		return;
+
+	/* If forcing compositor cursor, ignore client cursor surfaces. */
+	if (cursor_mode == SWC_CURSOR_MODE_COMPOSITOR || cursor_override != SWC_CURSOR_DEFAULT)
 		return;
 
 	if (pointer->cursor.surface) {

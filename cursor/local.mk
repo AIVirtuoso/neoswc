@@ -13,4 +13,3 @@ $(dir)/cursor_data.h: $(dir)/cursor.pcf $(dir)/convert_font
 CLEAN_FILES += $(dir)/convert_font.o
 
 include common.mk
-

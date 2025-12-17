@@ -63,6 +63,49 @@ void swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state);
  */
 void swc_pointer_send_axis(uint32_t time, uint32_t axis, int32_t value120);
 
+/* Cursor control (compositor-internal cursor) */
+enum swc_cursor_kind {
+	SWC_CURSOR_DEFAULT = 0,
+	SWC_CURSOR_BOX = 1,
+	SWC_CURSOR_CROSS = 2,
+	SWC_CURSOR_SIGHT = 3,
+	SWC_CURSOR_UP = 4,
+	SWC_CURSOR_DOWN = 5,
+};
+
+enum swc_cursor_mode {
+	/* Allow clients to set their own cursors (I-beam, resize, etc). */
+	SWC_CURSOR_MODE_CLIENT = 0,
+	/* Force compositor cursor; ignore client wl_pointer.set_cursor. */
+	SWC_CURSOR_MODE_COMPOSITOR = 1,
+};
+
+/**
+ * override the compositor's internal cursor
+ *
+ * this is intended for window managers to show mode cursors (move/resize/select) like the ones in hevel
+ * If a client has set its own cursor surface, swc may ignore the override.
+ */
+void swc_set_cursor(enum swc_cursor_kind kind);
+
+/**
+ * control whether client cursor surfaces are honored
+ */
+void swc_set_cursor_mode(enum swc_cursor_mode mode);
+
+/**
+ * set a custom argb8888 cursor image for a given kind
+ *
+ * `argb8888` is a pointer to `width*height` pixels in ARGB8888 order.
+ * the caller has to keep the pixel memory alive for as long as it may be used
+ */
+void swc_set_cursor_image(enum swc_cursor_kind kind,
+                          const uint32_t *argb8888,
+                          uint32_t width, uint32_t height,
+                          int32_t hotspot_x, int32_t hotspot_y);
+
+void swc_clear_cursor_image(enum swc_cursor_kind kind);
+
 /**
  * draw [or update] a simple box overlay
  *
