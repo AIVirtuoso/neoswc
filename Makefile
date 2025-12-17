@@ -1,123 +1,236 @@
-# swc: Makefile
+# bmake-compatible build for swc (avoids GNU make-specific functions/macros).
 
-.PHONY: all
-all: build
+.include "config.mk"
 
-# Defaults for config.mk
-PREFIX          ?= /usr/local
-BINDIR          ?= $(PREFIX)/bin
-LIBDIR          ?= $(PREFIX)/lib
-INCLUDEDIR      ?= $(PREFIX)/include
-DATADIR         ?= $(PREFIX)/share
-PKGCONFIGDIR    ?= $(LIBDIR)/pkgconfig
+.MAIN: build
 
-OBJCOPY         ?= objcopy
-PKG_CONFIG      ?= pkg-config
-WAYLAND_SCANNER ?= wayland-scanner
+.if !defined(PREFIX)
+PREFIX=/usr/local
+.endif
+.if !defined(BINDIR)
+BINDIR=${PREFIX}/bin
+.endif
+.if !defined(LIBDIR)
+LIBDIR=${PREFIX}/lib
+.endif
+.if !defined(INCLUDEDIR)
+INCLUDEDIR=${PREFIX}/include
+.endif
+.if !defined(DATADIR)
+DATADIR=${PREFIX}/share
+.endif
+.if !defined(PKGCONFIGDIR)
+PKGCONFIGDIR=${LIBDIR}/pkgconfig
+.endif
 
-VERSION_MAJOR   := 0
-VERSION_MINOR   := 0
-VERSION         := $(VERSION_MAJOR).$(VERSION_MINOR)
+.if !defined(OBJCOPY)
+OBJCOPY=objcopy
+.endif
+.if !defined(PKG_CONFIG)
+PKG_CONFIG=pkg-config
+.endif
+.if !defined(WAYLAND_SCANNER)
+WAYLAND_SCANNER=wayland-scanner
+.endif
+.if !defined(CC)
+CC=cc
+.endif
+.if !defined(AR)
+AR=ar
+.endif
 
-TARGETS         := swc.pc
-SUBDIRS         := launch libswc protocol cursor example
-CLEAN_FILES     := $(TARGETS)
+UNAME!= uname
 
-include config.mk
+VERSION_MAJOR=0
+VERSION_MINOR=0
+VERSION=${VERSION_MAJOR}.${VERSION_MINOR}
 
-# Dependencies
-PACKAGES :=           \
-    libdrm            \
-    pixman-1          \
-    wayland-server    \
-    wayland-protocols \
-    wld               \
-    xkbcommon
+PACKAGES=libdrm pixman-1 wayland-server wayland-protocols wld xkbcommon
 
-ifeq ($(ENABLE_XWAYLAND),1)
-PACKAGES +=         \
-    xcb             \
-    xcb-composite   \
-    xcb-ewmh        \
-    xcb-icccm
-endif
+.if ${UNAME} != "NetBSD"
+PACKAGES+= libinput
+.if defined(ENABLE_LIBUDEV) && ${ENABLE_LIBUDEV} == 1
+PACKAGES+= libudev
+.endif
+.endif
 
-ifneq ($(shell uname),NetBSD)
-    PACKAGES += libinput
-    ifeq ($(ENABLE_LIBUDEV),1)
-        PACKAGES += libudev
-    endif
-endif
+.if defined(ENABLE_XWAYLAND) && ${ENABLE_XWAYLAND} == 1
+PACKAGES+= xcb xcb-composite xcb-ewmh xcb-icccm
+.endif
 
-libinput_CONSTRAINTS        := --atleast-version=0.4
-wayland-server_CONSTRAINTS  := --atleast-version=1.6.0
+PKG_CFLAGS!= ${PKG_CONFIG} --cflags ${PACKAGES}
+PKG_LIBS!= ${PKG_CONFIG} --libs ${PACKAGES}
+WAYLAND_PROTOCOLS_DATADIR!= ${PKG_CONFIG} --variable=pkgdatadir wayland-protocols
 
-define check
-    ifeq ($$(origin $(1)_EXISTS),undefined)
-        $(1)_EXISTS = $$(shell $$(PKG_CONFIG) --exists $$($(1)_CONSTRAINTS) $(1) && echo yes)
-    endif
-    ifneq ($$($(1)_EXISTS),yes)
-        $$(error Could not find package $(1) $$($(1)_CONSTRAINTS))
-    endif
-endef
+CPPFLAGS+= -D_GNU_SOURCE
+CFLAGS+= -fvisibility=hidden -std=c11 ${PKG_CFLAGS}
+CFLAGS+= -Werror=implicit-function-declaration -Werror=implicit-int -Werror=pointer-sign -Werror=pointer-arith -Wall -Wno-missing-braces
 
-$(foreach pkg,$(PACKAGES),$(eval $(call check,$(pkg))))
+.if defined(ENABLE_DEBUG) && ${ENABLE_DEBUG} == 1
+CPPFLAGS+= -DENABLE_DEBUG=1
+CFLAGS+= -g
+.endif
 
-FINAL_CFLAGS = $(CFLAGS) -fvisibility=hidden -std=c11
-FINAL_CPPFLAGS = $(CPPFLAGS) -D_GNU_SOURCE # Required for mkostemp
+.if defined(ENABLE_LIBUDEV) && ${ENABLE_LIBUDEV} == 1
+CPPFLAGS+= -DENABLE_LIBUDEV
+.endif
+.if defined(ENABLE_XWAYLAND) && ${ENABLE_XWAYLAND} == 1
+CPPFLAGS+= -DENABLE_XWAYLAND
+.endif
 
-# Warning/error flags
-FINAL_CFLAGS += -Werror=implicit-function-declaration -Werror=implicit-int \
-                -Werror=pointer-sign -Werror=pointer-arith \
-                -Wall -Wno-missing-braces
+PROTO_EXTENSIONS= \
+	protocol/server-decoration.xml \
+	protocol/swc.xml \
+	protocol/wayland-drm.xml \
+	${WAYLAND_PROTOCOLS_DATADIR}/stable/xdg-shell/xdg-shell.xml \
+	${WAYLAND_PROTOCOLS_DATADIR}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml \
+	${WAYLAND_PROTOCOLS_DATADIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
 
-ifeq ($(ENABLE_DEBUG),1)
-    FINAL_CPPFLAGS += -DENABLE_DEBUG=1
-    FINAL_CFLAGS += -g
-endif
+.for xml in ${PROTO_EXTENSIONS}
+_base=${xml:T:R}
+protocol/${_base}-protocol.c: ${xml}
+	@echo "  GEN $@"
+	@${WAYLAND_SCANNER} code < ${.ALLSRC} > ${.TARGET}
 
-ifeq ($(if $(V),$(V),0),0)
-    quiet = @echo '  $1 $@';
-endif
+protocol/${_base}-server-protocol.h: ${xml}
+	@echo "  GEN $@"
+	@${WAYLAND_SCANNER} server-header < ${.ALLSRC} > ${.TARGET}
+.endfor
 
-Q_AR      = $(call quiet,AR     )
-Q_CC      = $(call quiet,CC     )
-Q_CCLD    = $(call quiet,CCLD   )
-Q_GEN     = $(call quiet,GEN    )
-Q_OBJCOPY = $(call quiet,OBJCOPY)
-Q_SYM     = $(call quiet,SYM    )
+PROTO_GEN_C= \
+	protocol/linux-dmabuf-unstable-v1-protocol.c \
+	protocol/server-decoration-protocol.c \
+	protocol/swc-protocol.c \
+	protocol/wayland-drm-protocol.c \
+	protocol/xdg-decoration-unstable-v1-protocol.c \
+	protocol/xdg-shell-protocol.c
 
-compile   = $(Q_CC)$(CC) $(FINAL_CPPFLAGS) $(FINAL_CFLAGS) -I . -c -o $@ $< \
-            -MMD -MP -MF .deps/$(basename $<).d -MT $(basename $@).o -MT $(basename $@).lo
-link      = $(Q_CCLD)$(CC) $(LDFLAGS) -o $@ $^
-pkgconfig = $(foreach pkg,$(1),$(if $($(pkg)_$(3)),$($(pkg)_$(3)), \
-                                    $(shell $(PKG_CONFIG) --$(2) $(pkg))))
+PROTO_GEN_H= \
+	protocol/linux-dmabuf-unstable-v1-server-protocol.h \
+	protocol/server-decoration-server-protocol.h \
+	protocol/swc-server-protocol.h \
+	protocol/wayland-drm-server-protocol.h \
+	protocol/xdg-decoration-unstable-v1-server-protocol.h \
+	protocol/xdg-shell-server-protocol.h
 
-include $(SUBDIRS:%=%/local.mk)
+cursor/cursor_data.h: cursor/cursor.pcf cursor/convert_font
+	@echo "  GEN $@"
+	@cursor/convert_font cursor/cursor.pcf ${.TARGET} 2>/dev/null
 
-$(foreach dir,BIN LIB INCLUDE PKGCONFIG,$(DESTDIR)$($(dir)DIR)) $(DESTDIR)$(DATADIR)/swc:
-	mkdir -p $@
+cursor/convert_font: cursor/convert_font.o
+	@echo "  CCLD $@"
+	@${CC} ${LDFLAGS} -o ${.TARGET} ${.ALLSRC}
 
-.PHONY: build
-build: $(SUBDIRS:%=build-%) $(TARGETS)
+cursor/convert_font.o: cursor/convert_font.c
+	@echo "  CC $@"
+	@${CC} ${CPPFLAGS} ${CFLAGS} -I . -c -o ${.TARGET} ${.ALLSRC}
 
-REQUIRES          := wayland-server
-REQUIRES_PRIVATE  := $(filter-out $(REQUIRES),$(libswc_PACKAGES))
-SWC_PC_VARS       := VERSION PREFIX LIBDIR INCLUDEDIR DATADIR REQUIRES REQUIRES_PRIVATE
+LAUNCH_DEVMAJOR=launch/devmajor-linux.c
+.if ${UNAME} == "NetBSD"
+LAUNCH_DEVMAJOR=launch/devmajor-netbsd.c
+.endif
+
+launch/swc-launch: launch/launch.o launch/protocol.o launch/${LAUNCH_DEVMAJOR:T:R}.o
+	@echo "  CCLD $@"
+	@${CC} ${LDFLAGS} -o ${.TARGET} ${.ALLSRC} ${PKG_LIBS}
+
+.for f in launch/launch.c launch/protocol.c ${LAUNCH_DEVMAJOR}
+launch/${f:T:R}.o: ${f}
+	@echo "  CC $@"
+	@${CC} ${CPPFLAGS} ${CFLAGS} -I . -c -o ${.TARGET} ${.ALLSRC}
+.endfor
+
+SWC_SOURCES= \
+	libswc/bindings.c \
+	libswc/compositor.c \
+	libswc/data.c \
+	libswc/data_device.c \
+	libswc/data_device_manager.c \
+	libswc/dmabuf.c \
+	libswc/drm.c \
+	libswc/input.c \
+	libswc/kde_decoration.c \
+	libswc/keyboard.c \
+	libswc/launch.c \
+	libswc/mode.c \
+	libswc/output.c \
+	libswc/panel.c \
+	libswc/panel_manager.c \
+	libswc/plane.c \
+	libswc/pointer.c \
+	libswc/primary_plane.c \
+	libswc/region.c \
+	libswc/screen.c \
+	libswc/shell.c \
+	libswc/shell_surface.c \
+	libswc/shm.c \
+	libswc/subcompositor.c \
+	libswc/subsurface.c \
+	libswc/surface.c \
+	libswc/swc.c \
+	libswc/util.c \
+	libswc/view.c \
+	libswc/wayland_buffer.c \
+	libswc/window.c \
+	libswc/xdg_decoration.c \
+	libswc/xdg_shell.c \
+	protocol/linux-dmabuf-unstable-v1-protocol.c \
+	protocol/server-decoration-protocol.c \
+	protocol/swc-protocol.c \
+	protocol/wayland-drm-protocol.c \
+	protocol/xdg-decoration-unstable-v1-protocol.c \
+	protocol/xdg-shell-protocol.c
+
+.if ${UNAME} == "NetBSD"
+SWC_SOURCES+= libswc/seat-ws.c
+.else
+SWC_SOURCES+= libswc/seat.c
+.endif
+
+.if defined(ENABLE_XWAYLAND) && ${ENABLE_XWAYLAND} == 1
+SWC_SOURCES+= libswc/xserver.c libswc/xwm.c
+.endif
+
+SWC_OBJECTS=${SWC_SOURCES:S/.c/.o/}
+SWC_OBJECTS+= launch/protocol.o
+
+.for src in ${SWC_SOURCES}
+${src:R}.o: ${src} ${PROTO_GEN_H} cursor/cursor_data.h
+	@echo "  CC $@"
+	@${CC} ${CPPFLAGS} ${CFLAGS} -I . -I protocol -c -o ${.TARGET} ${.IMPSRC}
+.endfor
+
+libswc/libswc-internal.o: ${SWC_OBJECTS}
+	@echo "  CCLD $@"
+	@${CC} -nostdlib -r -o ${.TARGET} ${.ALLSRC}
+
+libswc/libswc.o: libswc/libswc-internal.o
+	@echo "  OBJCOPY $@"
+	@${OBJCOPY} --localize-hidden ${.ALLSRC} ${.TARGET}
+
+libswc/libswc.a: libswc/libswc.o
+	@echo "  AR $@"
+	@${AR} cru ${.TARGET} ${.ALLSRC}
 
 swc.pc: swc.pc.in
-	$(Q_GEN)sed $(foreach var,$(SWC_PC_VARS),-e 's:@$(var)@:$($(var)):') $< >$@
+	@echo "  GEN $@"
+	@sed -e 's:@VERSION@:${VERSION}:' \
+	     -e 's:@PREFIX@:${PREFIX}:' \
+	     -e 's:@LIBDIR@:${LIBDIR}:' \
+	     -e 's:@INCLUDEDIR@:${INCLUDEDIR}:' \
+	     -e 's:@DATADIR@:${DATADIR}:' \
+	     -e 's:@REQUIRES@:wayland-server:' \
+	     -e 's:@REQUIRES_PRIVATE@::' \
+	     ${.ALLSRC} > ${.TARGET}
 
-.PHONY: install-swc.pc
-install-swc.pc: swc.pc | $(DESTDIR)$(PKGCONFIGDIR)
-	install -m 644 $< $(DESTDIR)$(PKGCONFIGDIR)
+.PHONY: all build clean
+all: build
+build: libswc/libswc.a launch/swc-launch cursor/cursor_data.h swc.pc
 
-.PHONY: install
-install: $(SUBDIRS:%=install-%) $(TARGETS:%=install-%)
-
-.PHONY: clean
 clean:
-	rm -f $(CLEAN_FILES)
-
--include .deps/*/*.d
-
+	rm -f swc.pc \
+	      ${PROTO_GEN_C} ${PROTO_GEN_H} \
+	      cursor/cursor_data.h cursor/convert_font cursor/convert_font.o \
+	      launch/*.o launch/swc-launch \
+	      libswc/*.o libswc/libswc-internal.o libswc/libswc.o libswc/libswc.a \
+	      protocol/*.o
