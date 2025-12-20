@@ -5,11 +5,15 @@
 #define STBI_NO_HDR
 #include "../stb/stb_image.h"
 
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "../stb/stb_image_resize2.h"
+
 #include "swc.h"
 #include "internal.h"
 #include "drm.h"
 #include "util.h"
 #include "shm.h"
+#include "screen.h"
 
 unsigned char *wallpaper = NULL;
 struct wld_buffer *wallbuf = NULL;
@@ -20,8 +24,33 @@ EXPORT void
 swc_wallpaper_init(char* path)
 {
 	int width, height, chan;
+	unsigned char *loaded;
+	struct screen *screen;
+	int target_width = 0, target_height = 0;
 
-	wallpaper = stbi_load(path, &width, &height, &chan, 4);
+	loaded = stbi_load(path, &width, &height, &chan, 4);
+	if (!loaded)
+		return;
+
+	/* get screen dimensions */
+	wl_list_for_each(screen, &swc.screens, link) {
+		target_width = screen->base.geometry.width;
+		target_height = screen->base.geometry.height;
+		break;
+	}
+
+	/* If we have a screen and dimensions wrong  scale  */
+	if (target_width > 0 && target_height > 0 &&
+	    (width != target_width || height != target_height)) {
+		wallpaper = stbir_resize_uint8_srgb(loaded, width, height, 0,
+		                                     NULL, target_width, target_height, 0,
+		                                     STBIR_RGBA);
+		stbi_image_free(loaded);
+		width = target_width;
+		height = target_height;
+	} else {
+		wallpaper = loaded;
+	}
 
 	/* swap color channels to be compatible */
 	for(int i = 0; i < width * height; i++) {
