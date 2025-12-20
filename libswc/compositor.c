@@ -283,10 +283,14 @@ renderer_repaint(struct target *target, pixman_region32_t *damage, pixman_region
 
 	wld_set_target_surface(swc.drm->renderer, target->surface);
 
-	/* Paint base damage black. */
 	if (pixman_region32_not_empty(base_damage)) {
 		pixman_region32_translate(base_damage, -target->view->geometry.x, -target->view->geometry.y);
-		wld_fill_region(swc.drm->renderer, 0xff000000, base_damage);
+		
+		if(wallbuf)
+			wld_copy_region(swc.drm->renderer, wallbuf, 0, 0, base_damage);
+
+		else
+			wld_fill_region(swc.drm->renderer, bgcolor, base_damage);
 	}
 
 	wl_list_for_each_reverse (view, views, link) {

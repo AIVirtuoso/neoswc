@@ -410,6 +410,29 @@ int swc_add_axis_binding(uint32_t modifiers, uint32_t axis, swc_axis_binding_han
 
 /* }}} */
 
+/* Wallpaper {{{ */
+
+extern unsigned char *wallpaper;
+extern struct wld_buffer *wallbuf;
+
+/**
+ * Set wallpaper to image from fs path.
+ * TODO: scaling, tiling, maybe diff image for each screen
+ */
+
+void swc_wallpaper_init(char* path);
+
+/**
+ * Set wallpaper to a single color
+ * pretty much ignored if wallpaper is set to image
+ * defaults to black
+ */
+
+extern uint32_t bgcolor;
+void swc_wallpaper_color_set(uint32_t color);
+
+/* }}} */
+
 /**
  * This is a user-provided structure that swc will use to notify the display
  * server of new windows, screens and input devices.

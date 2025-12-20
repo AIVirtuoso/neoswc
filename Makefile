@@ -170,6 +170,7 @@ SWC_SOURCES= \
 	libswc/swc.c \
 	libswc/util.c \
 	libswc/view.c \
+	libswc/wallpaper.c \
 	libswc/wayland_buffer.c \
 	libswc/window.c \
 	libswc/xdg_decoration.c \
