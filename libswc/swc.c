@@ -37,6 +37,7 @@
 #include "seat.h"
 #include "shell.h"
 #include "shm.h"
+#include "snap.h"
 #include "subcompositor.h"
 #include "util.h"
 #include "window.h"
@@ -215,10 +216,16 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, con
 		goto error13;
 	}
 
+	swc.snap_manager = snap_manager_create(display);
+	if (!swc.snap_manager) {
+		ERROR("Could not initialize snap manager\n");
+		goto error14;
+	}
+
 #ifdef ENABLE_XWAYLAND
 	if (!xserver_initialize()) {
 		ERROR("Could not initialize xwayland\n");
-		goto error14;
+		goto error15;
 	}
 #endif
 
@@ -227,9 +234,11 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, con
 	return true;
 
 #ifdef ENABLE_XWAYLAND
+error15:
+	wl_global_destroy(swc.snap_manager);
+#endif
 error14:
 	wl_global_destroy(swc.panel_manager);
-#endif
 error13:
 	wl_global_destroy(swc.kde_decoration_manager);
 error12:
@@ -266,6 +275,7 @@ swc_finalize(void)
 #ifdef ENABLE_XWAYLAND
 	xserver_finalize();
 #endif
+	wl_global_destroy(swc.snap_manager);
 	wl_global_destroy(swc.panel_manager);
 	wl_global_destroy(swc.xdg_decoration_manager);
 	wl_global_destroy(swc.xdg_shell);

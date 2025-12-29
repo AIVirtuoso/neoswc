@@ -30,6 +30,9 @@
 #include <pixman.h>
 #include <wayland-server.h>
 
+struct screen;
+struct wld_buffer;
+
 struct swc_compositor {
 	struct pointer_handler *const pointer_handler;
 	struct {
@@ -96,5 +99,17 @@ void compositor_view_hide(struct compositor_view *view);
 
 void compositor_view_set_border_color(struct compositor_view *view, uint32_t outcolor, uint32_t incolor);
 void compositor_view_set_border_width(struct compositor_view *view, uint32_t outwidth, uint32_t inwidth);
+
+/**
+ * get the current composited buffer for a screen for screenshotss.
+ * returns null if no buffer
+ */
+struct wld_buffer *compositor_get_buffer(struct screen *screen);
+
+/**
+ * render the compositor scene into a shm buffer 
+ * caller must free with wld_buffer_unreference()
+ */
+struct wld_buffer *compositor_render_to_shm(struct screen *screen);
 
 #endif

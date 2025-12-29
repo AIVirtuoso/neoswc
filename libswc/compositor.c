@@ -1189,3 +1189,119 @@ compositor_finalize(void)
 	pixman_region32_fini(&compositor.opaque);
 	wl_global_destroy(compositor.global);
 }
+
+struct wld_buffer *
+compositor_get_buffer(struct screen *screen)
+{
+	struct target *target = target_get(screen);
+	if (!target)
+		return NULL;
+	return target->current_buffer;
+}
+
+struct wld_buffer *
+compositor_render_to_shm(struct screen *screen)
+{
+	uint32_t width = screen->base.geometry.width;
+	uint32_t height = screen->base.geometry.height;
+	struct wld_buffer *buffer;
+	struct compositor_view *view;
+	pixman_region32_t region;
+	pixman_region32_t damage;
+	uint32_t caps;
+
+	/* create shm buf */
+	buffer = wld_create_buffer(swc.shm->context, width, height,
+	                           WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
+	if (!buffer)
+		return NULL;
+
+	caps = wld_capabilities(swc.shm->renderer, buffer);
+	if (!(caps & WLD_CAPABILITY_WRITE) ||
+	    !wld_set_target_buffer(swc.shm->renderer, buffer)) {
+		wld_buffer_unreference(buffer);
+		return NULL;
+	}
+
+	/* set reigon */
+	pixman_region32_init_rect(&region, 0, 0, width, height);
+	pixman_region32_init_rect(&damage, screen->base.geometry.x, screen->base.geometry.y, width, height);
+
+	/* background */
+	if (wallbuf)
+		wld_copy_region(swc.shm->renderer, wallbuf, 0, 0, &region);
+	else
+		wld_fill_region(swc.shm->renderer, bgcolor, &region);
+
+	wl_list_for_each_reverse(view, &compositor.views, link) {
+		struct wld_buffer *src = view->buffer;
+
+		if (!view->visible)
+			continue;
+
+		if (src && !(wld_capabilities(swc.shm->renderer, src) & WLD_CAPABILITY_READ))
+			src = view->base.buffer;
+
+		if (src && (wld_capabilities(swc.shm->renderer, src) & WLD_CAPABILITY_READ)) {
+			int32_t x = view->base.geometry.x - screen->base.geometry.x;
+			int32_t y = view->base.geometry.y - screen->base.geometry.y;
+
+			wld_copy_rectangle(swc.shm->renderer, src,
+			                   x, y, 0, 0,
+			                   view->base.geometry.width, view->base.geometry.height);
+		}
+
+		if ((view->border.outwidth > 0 || view->border.inwidth > 0) && view->base.buffer) {
+			pixman_region32_t view_region, view_damage, border_damage;
+			const struct swc_rectangle *geom = &view->base.geometry;
+			const struct swc_rectangle *target_geom = &screen->base.geometry;
+
+			pixman_region32_init_rect(&view_region, geom->x, geom->y, geom->width, geom->height);
+			pixman_region32_init_with_extents(&view_damage, &view->extents);
+			pixman_region32_init(&border_damage);
+
+			pixman_region32_intersect(&view_damage, &view_damage, &damage);
+			pixman_region32_subtract(&view_damage, &view_damage, &view->clip);
+			pixman_region32_subtract(&border_damage, &view_damage, &view_region);
+
+			pixman_region32_t in_rect;
+			pixman_region32_init_rect(&in_rect,
+			                          geom->x - view->border.inwidth,
+			                          geom->y - view->border.inwidth,
+			                          geom->width + (2 * view->border.inwidth),
+			                          geom->height + (2 * view->border.inwidth));
+
+			pixman_region32_t out_border;
+			pixman_region32_init(&out_border);
+			pixman_region32_subtract(&out_border, &border_damage, &in_rect);
+
+			pixman_region32_t in_border;
+			pixman_region32_init(&in_border);
+			pixman_region32_subtract(&in_border, &in_rect, &view_region);
+			pixman_region32_intersect(&in_border, &in_border, &border_damage);
+
+			if (view->border.outwidth > 0 && pixman_region32_not_empty(&out_border)) {
+				pixman_region32_translate(&out_border, -target_geom->x, -target_geom->y);
+				wld_fill_region(swc.shm->renderer, view->border.outcolor, &out_border);
+			}
+
+			if (view->border.inwidth > 0 && pixman_region32_not_empty(&in_border)) {
+				pixman_region32_translate(&in_border, -target_geom->x, -target_geom->y);
+				wld_fill_region(swc.shm->renderer, view->border.incolor, &in_border);
+			}
+
+			pixman_region32_fini(&border_damage);
+			pixman_region32_fini(&view_region);
+			pixman_region32_fini(&view_damage);
+			pixman_region32_fini(&in_rect);
+			pixman_region32_fini(&out_border);
+			pixman_region32_fini(&in_border);
+		}
+	}
+
+	wld_flush(swc.shm->renderer);
+	pixman_region32_fini(&region);
+	pixman_region32_fini(&damage);
+
+	return buffer;
+}

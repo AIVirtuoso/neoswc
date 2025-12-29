@@ -81,6 +81,7 @@ CPPFLAGS+= -DENABLE_XWAYLAND
 PROTO_EXTENSIONS= \
 	protocol/server-decoration.xml \
 	protocol/swc.xml \
+	protocol/swc_snap.xml \
 	protocol/wayland-drm.xml \
 	${WAYLAND_PROTOCOLS_DATADIR}/stable/xdg-shell/xdg-shell.xml \
 	${WAYLAND_PROTOCOLS_DATADIR}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml \
@@ -101,6 +102,7 @@ PROTO_GEN_C= \
 	protocol/linux-dmabuf-unstable-v1-protocol.c \
 	protocol/server-decoration-protocol.c \
 	protocol/swc-protocol.c \
+	protocol/swc_snap-protocol.c \
 	protocol/wayland-drm-protocol.c \
 	protocol/xdg-decoration-unstable-v1-protocol.c \
 	protocol/xdg-shell-protocol.c
@@ -109,6 +111,7 @@ PROTO_GEN_H= \
 	protocol/linux-dmabuf-unstable-v1-server-protocol.h \
 	protocol/server-decoration-server-protocol.h \
 	protocol/swc-server-protocol.h \
+	protocol/swc_snap-server-protocol.h \
 	protocol/wayland-drm-server-protocol.h \
 	protocol/xdg-decoration-unstable-v1-server-protocol.h \
 	protocol/xdg-shell-server-protocol.h
@@ -164,6 +167,7 @@ SWC_SOURCES= \
 	libswc/shell.c \
 	libswc/shell_surface.c \
 	libswc/shm.c \
+	libswc/snap.c \
 	libswc/subcompositor.c \
 	libswc/subsurface.c \
 	libswc/surface.c \
@@ -178,6 +182,7 @@ SWC_SOURCES= \
 	protocol/linux-dmabuf-unstable-v1-protocol.c \
 	protocol/server-decoration-protocol.c \
 	protocol/swc-protocol.c \
+	protocol/swc_snap-protocol.c \
 	protocol/wayland-drm-protocol.c \
 	protocol/xdg-decoration-unstable-v1-protocol.c \
 	protocol/xdg-shell-protocol.c

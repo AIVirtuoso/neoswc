@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="swc_snap">
+    <interface name="swc_snap" version="1">
+        <description summary="simple screenshot to file descriptor">
+            provides a minimal screenshot capability.
+        </description>
+
+        <request name="capture">
+            <description summary="capture screenshot to fd">
+                captures the current screen and writes it as ppm formay
+            </description>
+            <arg name="fd" type="fd" summary="file descriptor to write ppm data"/>
+        </request>
+    </interface>
+</protocol>
