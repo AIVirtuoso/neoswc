@@ -45,12 +45,14 @@ SWC_SOURCES =                       \
     libswc/shell.c                  \
     libswc/shell_surface.c          \
     libswc/shm.c                    \
+    libswc/snap.c                   \
     libswc/subcompositor.c          \
     libswc/subsurface.c             \
     libswc/surface.c                \
     libswc/swc.c                    \
     libswc/util.c                   \
     libswc/view.c                   \
+    libswc/wallpaper.c              \
     libswc/wayland_buffer.c         \
     libswc/window.c                 \
     libswc/xdg_decoration.c         \
@@ -58,6 +60,7 @@ SWC_SOURCES =                       \
     protocol/linux-dmabuf-unstable-v1-protocol.c \
     protocol/server-decoration-protocol.c \
     protocol/swc-protocol.c         \
+    protocol/swc_snap-protocol.c    \
     protocol/wayland-drm-protocol.c \
     protocol/xdg-decoration-unstable-v1-protocol.c \
     protocol/xdg-shell-protocol.c
@@ -91,6 +94,7 @@ $(call objects,compositor panel_manager panel screen): protocol/swc-server-proto
 $(call objects,dmabuf): protocol/linux-dmabuf-unstable-v1-server-protocol.h
 $(call objects,drm drm_buffer): protocol/wayland-drm-server-protocol.h
 $(call objects,kde_decoration): protocol/server-decoration-server-protocol.h
+$(call objects,snap): protocol/swc_snap-server-protocol.h
 $(call objects,xdg_decoration): protocol/xdg-decoration-unstable-v1-server-protocol.h
 $(call objects,xdg_shell): protocol/xdg-shell-server-protocol.h
 $(call objects,pointer): cursor/cursor_data.h
