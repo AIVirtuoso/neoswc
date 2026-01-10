@@ -27,12 +27,14 @@
 #include "internal.h"
 #include "keyboard.h"
 #include "seat.h"
+#include "surface.h"
 #include "swc.h"
 #include "util.h"
 #include "view.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 #define INTERNAL(w) ((struct window *)(w))
 
@@ -518,4 +520,27 @@ window_begin_resize(struct window *window, uint32_t edges, struct button *button
 	window->resize.offset.x = geometry->x - px + ((edges & SWC_WINDOW_EDGE_RIGHT) ? geometry->width : 0);
 	window->resize.offset.y = geometry->y - py + ((edges & SWC_WINDOW_EDGE_BOTTOM) ? geometry->height : 0);
 	window->resize.edges = edges;
+}
+
+EXPORT pid_t
+swc_window_get_pid(struct swc_window *base)
+{
+	struct window *window = INTERNAL(base);
+	struct surface *surface;
+	struct wl_client *client;
+	pid_t pid;
+	uid_t uid;
+	gid_t gid;
+
+	if (!window || !window->view || !window->view->surface)
+		return 0;
+
+	surface = window->view->surface;
+	if (!surface->resource)
+		return 0;
+
+	client = wl_resource_get_client(surface->resource);
+	wl_client_get_credentials(client, &pid, &uid, &gid);
+
+	return pid;
 }

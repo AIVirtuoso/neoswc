@@ -26,6 +26,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -319,6 +320,13 @@ void swc_window_set_geometry(struct swc_window *window, const struct swc_rectang
  * Get the window's current geometry in compositor-global coordinates.
  */
 bool swc_window_get_geometry(const struct swc_window *window, struct swc_rectangle *geometry);
+
+/**
+ * Get the pid of the client that owns this window
+ *
+ * returns pid, or 0 if unavailable
+ */
+pid_t swc_window_get_pid(struct swc_window *window);
 
 /**
  * Set the window's border color and width.
