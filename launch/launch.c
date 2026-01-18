@@ -243,7 +243,7 @@ handle_socket_data(int socket)
 			goto fail;
 		}
 
-		fd = open(path, request.flags);
+		fd = open(path, request.flags | O_CLOEXEC);
 		if (fd == -1) {
 			fprintf(stderr, "open %s: %s\n", path, strerror(errno));
 			goto fail;
@@ -325,7 +325,7 @@ find_vt(char *vt, size_t size)
 	 * new VT instead of using the current one. */
 	if (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY") ||
 	    !(vtnr = getenv("XDG_VTNR"))) {
-		tty0_fd = open("/dev/tty0", O_RDWR);
+		tty0_fd = open("/dev/tty0", O_RDWR | O_CLOEXEC);
 		if (tty0_fd == -1) {
 			die("open /dev/tty0:");
 		}
@@ -356,7 +356,7 @@ open_tty(const char *tty_name)
 		return STDIN_FILENO;
 	}
 
-	fd = open(tty_name, O_RDWR | O_NOCTTY);
+	fd = open(tty_name, O_RDWR | O_NOCTTY | O_CLOEXEC);
 	if (fd < 0) {
 		die("open %s:", tty_name);
 	}
