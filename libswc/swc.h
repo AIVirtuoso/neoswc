@@ -121,6 +121,19 @@ void swc_overlay_set_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_
  */
 void swc_overlay_clear(void);
 
+/**
+ * Set the compositor zoom level.
+ *
+ * 1.0 = normal, >1.0 = zoomed in, <1.0 = zoomed out
+ * Uses software (pixman) scaling.
+ */
+void swc_set_zoom(float level);
+
+/**
+ * Get the current zoom level.
+ */
+float swc_get_zoom(void);
+
 /* Rectangles {{{ */
 
 struct swc_rectangle {
