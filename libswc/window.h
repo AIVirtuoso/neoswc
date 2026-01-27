@@ -52,6 +52,11 @@ struct window {
 	struct view_handler view_handler;
 	bool managed;
 	unsigned mode;
+	
+	struct {
+		struct swc_rectangle geom;
+		unsigned mode;
+	} prev;
 
 	struct {
 		struct window_pointer_interaction interaction;

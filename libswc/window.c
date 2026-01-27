@@ -194,12 +194,23 @@ EXPORT void
 swc_window_set_fullscreen(struct swc_window *base, struct swc_screen *screen)
 {
 	struct window *window = INTERNAL(base);
+	struct swc_rectangle geom;
+	swc_window_get_geometry(base, &geom);
+	
+	if (window->mode != WINDOW_MODE_FULLSCREEN) {
+		window->prev.geom = geom;
+		window->prev.mode = window->mode;
+		swc_window_set_geometry(base, &screen->usable_geometry);
 
-	/* TODO: Implement fullscreen windows. */
+		if (window->impl->set_mode)
+			window->impl->set_mode(window, WINDOW_MODE_FULLSCREEN);
+		window->mode = WINDOW_MODE_FULLSCREEN;
+	}
 
-	if (window->impl->set_mode)
-		window->impl->set_mode(window, WINDOW_MODE_FULLSCREEN);
-	window->mode = WINDOW_MODE_FULLSCREEN;
+	else {
+		swc_window_set_geometry(base, &window->prev.geom);
+		window->mode = window->prev.mode;
+	}
 }
 
 EXPORT void
