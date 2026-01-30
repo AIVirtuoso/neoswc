@@ -89,13 +89,19 @@ PROTO_EXTENSIONS= \
 
 .for xml in ${PROTO_EXTENSIONS}
 _base=${xml:T:R}
-protocol/${_base}-protocol.c: ${xml}
+protocol/${_base}-protocol.c: ${xml} \
+    protocol/${_base}-server-protocol.h \
+    protocol/${_base}-client-protocol.h
 	@echo "  GEN $@"
-	@${WAYLAND_SCANNER} code < ${.ALLSRC} > ${.TARGET}
+	@${WAYLAND_SCANNER} code ${xml} ${.TARGET}
 
 protocol/${_base}-server-protocol.h: ${xml}
 	@echo "  GEN $@"
-	@${WAYLAND_SCANNER} server-header < ${.ALLSRC} > ${.TARGET}
+	@${WAYLAND_SCANNER} server-header ${xml} ${.TARGET}
+
+protocol/${_base}-client-protocol.h: ${xml}
+	@echo "  GEN $@"
+	@${WAYLAND_SCANNER} client-header ${xml} ${.TARGET}
 .endfor
 
 PROTO_GEN_C= \
@@ -109,12 +115,19 @@ PROTO_GEN_C= \
 
 PROTO_GEN_H= \
 	protocol/linux-dmabuf-unstable-v1-server-protocol.h \
+	protocol/linux-dmabuf-unstable-v1-client-protocol.h \
 	protocol/server-decoration-server-protocol.h \
+	protocol/server-decoration-client-protocol.h \
 	protocol/swc-server-protocol.h \
+	protocol/swc-client-protocol.h \
 	protocol/swc_snap-server-protocol.h \
+	protocol/swc_snap-client-protocol.h \
 	protocol/wayland-drm-server-protocol.h \
+	protocol/wayland-drm-client-protocol.h \
 	protocol/xdg-decoration-unstable-v1-server-protocol.h \
-	protocol/xdg-shell-server-protocol.h
+	protocol/xdg-decoration-unstable-v1-client-protocol.h \
+	protocol/xdg-shell-server-protocol.h \
+	protocol/xdg-shell-client-protocol.h
 
 cursor/cursor_data.h: cursor/cursor.pcf cursor/convert_font
 	@echo "  GEN $@"

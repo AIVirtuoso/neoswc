@@ -17,16 +17,10 @@ $(dir)_PACKAGES := wayland-server
 .for ext in ${PROTOCOL_EXTENSIONS}
 proto_base := ${ext:T:R}
 
-${dir}/${proto_base}-protocol.c: ${ext} \
-    ${dir}/${proto_base}-server-protocol.h \
-    ${dir}/${proto_base}-client-protocol.h
+${dir}/${proto_base}-protocol.c: ${ext}
+	${Q_GEN}${WAYLAND_SCANNER} server-header ${ext} ${dir}/${proto_base}-server-protocol.h
+	${Q_GEN}${WAYLAND_SCANNER} client-header ${ext} ${dir}/${proto_base}-client-protocol.h
 	${Q_GEN}${WAYLAND_SCANNER} code ${ext} ${.TARGET}
-
-${dir}/${proto_base}-server-protocol.h: ${ext}
-	${Q_GEN}${WAYLAND_SCANNER} server-header ${ext} ${.TARGET}
-
-${dir}/${proto_base}-client-protocol.h: ${ext}
-	${Q_GEN}${WAYLAND_SCANNER} client-header ${ext} ${.TARGET}
 
 CLEAN_FILES += ${dir}/${proto_base}-protocol.c \
     ${dir}/${proto_base}-server-protocol.h \
