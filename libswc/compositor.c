@@ -219,11 +219,18 @@ repaint_view(struct target *target, struct compositor_view *view, pixman_region3
 {
 	pixman_region32_t view_region, view_damage, border_damage;
 	const struct swc_rectangle *geom = &view->base.geometry, *target_geom = &target->view->geometry;
+	bool has_parent = view->parent && view->parent != view;
+	pixman_region32_t parent_region;
 
 	if (!view->base.buffer)
 		return;
 
 	pixman_region32_init_rect(&view_region, geom->x, geom->y, geom->width, geom->height);
+	if (has_parent) {
+		const struct swc_rectangle *parent_geom = &view->parent->base.geometry;
+		pixman_region32_init_rect(&parent_region, parent_geom->x, parent_geom->y,
+					  parent_geom->width, parent_geom->height);
+	}
 	pixman_region32_init_with_extents(&view_damage, &view->extents);
 	pixman_region32_init(&border_damage);
 
@@ -231,9 +238,13 @@ repaint_view(struct target *target, struct compositor_view *view, pixman_region3
 	pixman_region32_subtract(&view_damage, &view_damage, &view->clip);
 	pixman_region32_subtract(&border_damage, &view_damage, &view_region);
 	pixman_region32_intersect(&view_damage, &view_damage, &view_region);
+	if (has_parent) {
+		pixman_region32_intersect(&view_damage, &view_damage, &parent_region);
+		pixman_region32_intersect(&border_damage, &border_damage, &parent_region);
+	}
 
 	if (pixman_region32_not_empty(&view_damage)) {
-		pixman_region32_translate(&view_damage, -geom->x, -geom->y);
+		pixman_region32_translate(&view_damage, -geom->x + view->buffer_offset_x, -geom->y + view->buffer_offset_y);
 		wld_copy_region(swc.drm->renderer, view->buffer, geom->x - target_geom->x, geom->y - target_geom->y, &view_damage);
 	}
 
@@ -272,6 +283,8 @@ repaint_view(struct target *target, struct compositor_view *view, pixman_region3
 	pixman_region32_fini(&in_rect);
 	pixman_region32_fini(&out_border);
 	pixman_region32_fini(&in_border);
+	if (has_parent)
+		pixman_region32_fini(&parent_region);
 
 }
 
@@ -731,8 +744,11 @@ static int
 attach(struct view *base, struct wld_buffer *buffer)
 {
 	struct compositor_view *view = (void *)base;
+	struct surface *surface = view->surface;
 	pixman_box32_t old_extents;
 	pixman_region32_t old, new, both;
+	uint32_t new_width = buffer ? buffer->width : 0;
+	uint32_t new_height = buffer ? buffer->height : 0;
 	int ret;
 
 	if ((ret = renderer_attach(view, buffer)) < 0)
@@ -742,7 +758,18 @@ attach(struct view *base, struct wld_buffer *buffer)
 	 * visible on. */
 	update(&view->base);
 
-	if (view_set_size_from_buffer(&view->base, buffer)) {
+	view->buffer_offset_x = 0;
+	view->buffer_offset_y = 0;
+	if (surface && surface->has_window_geometry && buffer) {
+		if (surface->window_width > 0 && surface->window_height > 0) {
+			new_width = (uint32_t)surface->window_width;
+			new_height = (uint32_t)surface->window_height;
+			view->buffer_offset_x = surface->window_x;
+			view->buffer_offset_y = surface->window_y;
+		}
+	}
+
+	if (view_set_size(&view->base, new_width, new_height)) {
 		/* The view was resized. */
 		old_extents = view->extents;
 		update_extents(view);
@@ -818,7 +845,8 @@ view_at(int32_t x, int32_t y)
 			continue;
 
 		if (pixman_region32_contains_point(&view->surface->state.input,
-		                                   x - geom->x, y - geom->y, NULL))
+		                                   x - geom->x + view->buffer_offset_x,
+		                                   y - geom->y + view->buffer_offset_y, NULL))
 		{
 			return view;
 		}
@@ -992,6 +1020,8 @@ compositor_create_view(struct surface *surface)
 	view->buffer = NULL;
 	view->window = NULL;
 	view->parent = NULL;
+	view->buffer_offset_x = 0;
+	view->buffer_offset_y = 0;
 	view->visible = false;
 	view->extents.x1 = 0;
 	view->extents.y1 = 0;
@@ -1137,13 +1167,28 @@ calculate_damage(void)
 			continue;
 
 		geom = &view->base.geometry;
+		bool has_parent = view->parent && view->parent != view;
+		pixman_region32_t view_region;
+		pixman_region32_t parent_region;
+
+		pixman_region32_init_rect(&view_region, geom->x, geom->y, geom->width, geom->height);
+		if (has_parent) {
+			const struct swc_rectangle *parent_geom = &view->parent->base.geometry;
+			pixman_region32_init_rect(&parent_region, parent_geom->x, parent_geom->y,
+			                          parent_geom->width, parent_geom->height);
+		}
 
 		/* Clip the surface by the opaque region covering it. */
 		pixman_region32_copy(&view->clip, &compositor.opaque);
 
 		/* Translate the opaque region to global coordinates. */
 		pixman_region32_copy(&surface_opaque, &view->surface->state.opaque);
-		pixman_region32_translate(&surface_opaque, geom->x, geom->y);
+		pixman_region32_translate(&surface_opaque,
+		                          geom->x - view->buffer_offset_x,
+		                          geom->y - view->buffer_offset_y);
+		pixman_region32_intersect(&surface_opaque, &surface_opaque, &view_region);
+		if (has_parent)
+			pixman_region32_intersect(&surface_opaque, &surface_opaque, &parent_region);
 
 		/* Add the surface's opaque region to the accumulated opaque region. */
 		pixman_region32_union(&compositor.opaque, &compositor.opaque, &surface_opaque);
@@ -1154,7 +1199,11 @@ calculate_damage(void)
 			renderer_flush_view(view);
 
 			/* Translate surface damage to global coordinates. */
-			pixman_region32_translate(surface_damage, geom->x, geom->y);
+			pixman_region32_translate(surface_damage,
+			                          geom->x - view->buffer_offset_x,
+			                          geom->y - view->buffer_offset_y);
+			if (has_parent)
+				pixman_region32_intersect(surface_damage, surface_damage, &parent_region);
 
 			/* Add the surface damage to the compositor damage. */
 			pixman_region32_union(&compositor.damage, &compositor.damage, surface_damage);
@@ -1163,22 +1212,24 @@ calculate_damage(void)
 
 	                /* redraw entire thingy if either */
 			if (view->border.damaged_border1 || view->border.damaged_border2) {
-				pixman_region32_t border_region, view_region;
+				pixman_region32_t border_region;
 
 				pixman_region32_init_with_extents(&border_region, &view->extents);
-				pixman_region32_init_rect(&view_region, geom->x, geom->y, geom->width, geom->height);
 
 				pixman_region32_subtract(&border_region, &border_region, &view_region);
 
 				pixman_region32_union(&compositor.damage, &compositor.damage, &border_region);
 
 				pixman_region32_fini(&border_region);
-				pixman_region32_fini(&view_region);
 
 				view->border.damaged_border1 = false;
 				view->border.damaged_border2 = false;
 			}
-		}
+
+		pixman_region32_fini(&view_region);
+		if (has_parent)
+			pixman_region32_fini(&parent_region);
+	}
 
 	pixman_region32_fini(&surface_opaque);
 }

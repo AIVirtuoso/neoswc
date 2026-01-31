@@ -27,6 +27,7 @@
 #include "output.h"
 #include "region.h"
 #include "screen.h"
+#include "subsurface.h"
 #include "util.h"
 #include "view.h"
 #include "wayland_buffer.h"
@@ -218,9 +219,8 @@ trim_region(pixman_region32_t *region, struct wld_buffer *buffer)
 }
 
 static void
-commit(struct wl_client *client, struct wl_resource *resource)
+surface_apply_pending(struct surface *surface, bool flush_children)
 {
-	struct surface *surface = wl_resource_get_user_data(resource);
 	struct wld_buffer *buffer;
 
 	/* Attach */
@@ -263,6 +263,32 @@ commit(struct wl_client *client, struct wl_resource *resource)
 	}
 
 	surface->pending.commit = 0;
+
+	if (surface->subsurface)
+		surface->subsurface->pending = false;
+
+	if (flush_children) {
+		struct subsurface *child;
+		wl_list_for_each (child, &surface->subsurfaces, link) {
+			if (!child->sync || !child->pending)
+				continue;
+			if (child->surface)
+				surface_apply_pending(child->surface, true);
+		}
+	}
+}
+
+static void
+commit(struct wl_client *client, struct wl_resource *resource)
+{
+	struct surface *surface = wl_resource_get_user_data(resource);
+
+	if (surface->subsurface && surface->subsurface->sync) {
+		surface->subsurface->pending = true;
+		return;
+	}
+
+	surface_apply_pending(surface, true);
 }
 
 static void
@@ -339,6 +365,14 @@ surface_new(struct wl_client *client, uint32_t version, uint32_t id)
 	surface->pending.commit = 0;
 	surface->view = NULL;
 	surface->view_handler.impl = &view_handler_impl;
+	surface->subsurface = NULL;
+	wl_list_init(&surface->subsurfaces);
+	surface->has_window_geometry = false;
+	surface->window_x = 0;
+	surface->window_y = 0;
+	surface->window_width = 0;
+	surface->window_height = 0;
+	surface->window_geometry_applied = false;
 
 	state_initialize(&surface->state);
 	state_initialize(&surface->pending.state);

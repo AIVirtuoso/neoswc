@@ -24,14 +24,29 @@
 #ifndef SWC_SUBSURFACE_H
 #define SWC_SUBSURFACE_H
 
+#include "view.h"
+
+#include <stdbool.h>
 #include <stdint.h>
+#include <wayland-server.h>
 
 struct wl_client;
+struct surface;
 
 struct subsurface {
 	struct wl_resource *resource;
+	struct surface *surface;
+	struct surface *parent;
+	struct view_handler parent_view_handler;
+	struct wl_listener surface_destroy_listener;
+	struct wl_listener parent_destroy_listener;
+	struct wl_list link;
+	int32_t x, y;
+	bool sync;
+	bool pending;
 };
 
-struct subsurface *subsurface_new(struct wl_client *client, uint32_t version, uint32_t id);
+struct subsurface *subsurface_new(struct wl_client *client, uint32_t version, uint32_t id,
+                                  struct surface *surface, struct surface *parent);
 
 #endif

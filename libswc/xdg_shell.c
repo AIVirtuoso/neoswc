@@ -591,6 +591,25 @@ ack_configure(struct wl_client *client, struct wl_resource *resource, uint32_t s
 static void
 set_window_geometry(struct wl_client *client, struct wl_resource *resource, int32_t x, int32_t y, int32_t width, int32_t height)
 {
+	(void)client;
+	struct xdg_surface *xdg_surface = wl_resource_get_user_data(resource);
+	struct surface *surface = xdg_surface->surface;
+
+	if (width <= 0 || height <= 0) {
+		surface->has_window_geometry = false;
+		return;
+	}
+
+	surface->has_window_geometry = true;
+	surface->window_x = x;
+	surface->window_y = y;
+	surface->window_width = width;
+	surface->window_height = height;
+	if (!surface->window_geometry_applied && surface->view && (x != 0 || y != 0)) {
+		struct swc_rectangle *geom = &surface->view->geometry;
+		view_move(surface->view, geom->x - x, geom->y - y);
+		surface->window_geometry_applied = true;
+	}
 }
 
 static const struct xdg_surface_interface xdg_surface_impl = {

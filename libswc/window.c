@@ -395,8 +395,14 @@ window_initialize(struct window *window, const struct window_impl *impl, struct 
 	window->base.app_id = NULL;
 	window->base.parent = NULL;
 
-	if (!(window->view = compositor_create_view(surface)))
-		return false;
+	if (surface->view) {
+		window->view = compositor_view(surface->view);
+		if (!window->view || window->view->window)
+			return false;
+	} else {
+		if (!(window->view = compositor_create_view(surface)))
+			return false;
+	}
 
 	window->impl = impl;
 	window->handler = &null_handler;

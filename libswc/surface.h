@@ -29,6 +29,8 @@
 #include <pixman.h>
 #include <wayland-server.h>
 
+struct subsurface;
+
 enum {
 	SURFACE_COMMIT_ATTACH = (1 << 0),
 	SURFACE_COMMIT_DAMAGE = (1 << 1),
@@ -67,6 +69,13 @@ struct surface {
 
 	struct view *view;
 	struct view_handler view_handler;
+
+	struct subsurface *subsurface;
+	struct wl_list subsurfaces;
+	bool has_window_geometry;
+	int32_t window_x, window_y;
+	int32_t window_width, window_height;
+	bool window_geometry_applied;
 };
 
 struct surface *surface_new(struct wl_client *client, uint32_t version, uint32_t id);

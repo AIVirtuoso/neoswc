@@ -25,6 +25,7 @@
 #include "internal.h"
 #include "subcompositor.h"
 #include "subsurface.h"
+#include "surface.h"
 #include "util.h"
 
 static void
@@ -32,13 +33,23 @@ get_subsurface(struct wl_client *client, struct wl_resource *resource,
                uint32_t id, struct wl_resource *surface_resource, struct wl_resource *parent_resource)
 {
 	struct subsurface *subsurface;
+	struct surface *surface = wl_resource_get_user_data(surface_resource);
+	struct surface *parent = wl_resource_get_user_data(parent_resource);
 
-	subsurface = subsurface_new(client, wl_resource_get_version(resource), id);
+	if (!surface || !parent || surface == parent)
+		return;
+
+	if (surface->subsurface)
+		return;
+
+	subsurface = subsurface_new(client, wl_resource_get_version(resource), id, surface, parent);
 
 	if (!subsurface) {
 		wl_resource_post_no_memory(resource);
 		return;
 	}
+
+	surface->subsurface = subsurface;
 }
 
 static const struct wl_subcompositor_interface subcompositor_impl = {

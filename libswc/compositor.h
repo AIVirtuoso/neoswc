@@ -55,6 +55,8 @@ struct compositor_view {
 	struct wld_buffer *buffer;
 	struct window *window;
 	struct compositor_view *parent;
+	int32_t buffer_offset_x;
+	int32_t buffer_offset_y;
 
 	/* Whether or not the view is visible (mapped). */
 	bool visible;
