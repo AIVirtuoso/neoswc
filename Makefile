@@ -242,9 +242,20 @@ swc.pc: swc.pc.in
 	     -e 's:@REQUIRES_PRIVATE@::' \
 	     ${.ALLSRC} > ${.TARGET}
 
-.PHONY: all build clean
+.PHONY: all build clean install
 all: build
 build: libswc/libswc.a launch/swc-launch cursor/cursor_data.h swc.pc
+
+install: build
+	install -d ${DESTDIR}${BINDIR}
+	install -d ${DESTDIR}${LIBDIR}
+	install -d ${DESTDIR}${INCLUDEDIR}
+	install -d ${DESTDIR}${PKGCONFIGDIR}
+	install -m 755 launch/swc-launch ${DESTDIR}${BINDIR}/
+	install -m 644 libswc/libswc.a ${DESTDIR}${LIBDIR}/
+	install -m 644 libswc/swc.h ${DESTDIR}${INCLUDEDIR}/
+	install -m 644 ${PROTO_GEN_H} ${DESTDIR}${INCLUDEDIR}/
+	install -m 644 swc.pc ${DESTDIR}${PKGCONFIGDIR}/
 
 clean:
 	rm -f swc.pc \
