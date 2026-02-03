@@ -361,6 +361,7 @@ seat_create(struct wl_display *display, const char *seat_name)
 	if (!seat)
 		goto error0;
 
+	memset(&seat->names, 0, sizeof(seat->names));
 	seat->names.rules = "base";
 	seat->names.model = "pc105";
 	seat->names.layout = "us";

@@ -41,13 +41,21 @@ AR=ar
 
 UNAME!= uname
 
+.if !defined(INPUT_BACKEND)
+. if ${UNAME} == "NetBSD"
+INPUT_BACKEND=wscons
+. else
+INPUT_BACKEND=libinput
+. endif
+.endif
+
 VERSION_MAJOR=0
 VERSION_MINOR=0
 VERSION=${VERSION_MAJOR}.${VERSION_MINOR}
 
 PACKAGES=libdrm pixman-1 wayland-server wayland-protocols wld xkbcommon
 
-.if ${UNAME} != "NetBSD"
+.if ${INPUT_BACKEND} == "libinput"
 PACKAGES+= libinput
 .if defined(ENABLE_LIBUDEV) && ${ENABLE_LIBUDEV} == 1
 PACKAGES+= libudev
@@ -76,6 +84,13 @@ CPPFLAGS+= -DENABLE_LIBUDEV
 .endif
 .if defined(ENABLE_XWAYLAND) && ${ENABLE_XWAYLAND} == 1
 CPPFLAGS+= -DENABLE_XWAYLAND
+.endif
+
+.if defined(EVDEV_KBD_DEVICE)
+CPPFLAGS+= -DEVDEV_KBD_DEVICE=\\\"${EVDEV_KBD_DEVICE}\\\"
+.endif
+.if defined(EVDEV_POINTER_DEVICE)
+CPPFLAGS+= -DEVDEV_POINTER_DEVICE=\\\"${EVDEV_POINTER_DEVICE}\\\"
 .endif
 
 PROTO_EXTENSIONS= \
@@ -200,10 +215,14 @@ SWC_SOURCES= \
 	protocol/xdg-decoration-unstable-v1-protocol.c \
 	protocol/xdg-shell-protocol.c
 
-.if ${UNAME} == "NetBSD"
+.if ${INPUT_BACKEND} == "wscons"
 SWC_SOURCES+= libswc/seat-ws.c
-.else
+.elif ${INPUT_BACKEND} == "evdev"
+SWC_SOURCES+= libswc/seat-evdev.c
+.elif ${INPUT_BACKEND} == "libinput"
 SWC_SOURCES+= libswc/seat.c
+.else
+.error Unknown INPUT_BACKEND '${INPUT_BACKEND}'. Use libinput, evdev, or wscons.
 .endif
 
 .if defined(ENABLE_XWAYLAND) && ${ENABLE_XWAYLAND} == 1

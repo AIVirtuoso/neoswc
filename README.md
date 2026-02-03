@@ -15,4 +15,6 @@ features
 - fullscreen
 - double window borders
 - wallpapers
+- screenshots
+- evdev-only input backend
 - probably more i forgot about

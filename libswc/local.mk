@@ -65,15 +65,33 @@ SWC_SOURCES =                       \
     protocol/xdg-decoration-unstable-v1-protocol.c \
     protocol/xdg-shell-protocol.c
 
-ifeq ($(shell uname),NetBSD)
+ifeq ($(strip $(INPUT_BACKEND)),)
+    ifeq ($(shell uname),NetBSD)
+        INPUT_BACKEND = wscons
+    else
+        INPUT_BACKEND = libinput
+    endif
+endif
+
+ifeq ($(INPUT_BACKEND),wscons)
     SWC_SOURCES += libswc/seat-ws.c
-else
+else ifeq ($(INPUT_BACKEND),evdev)
+    SWC_SOURCES += libswc/seat-evdev.c
+    ifneq ($(EVDEV_KBD_DEVICE),)
+        $(dir)_CFLAGS += -DEVDEV_KBD_DEVICE=\"$(EVDEV_KBD_DEVICE)\"
+    endif
+    ifneq ($(EVDEV_POINTER_DEVICE),)
+        $(dir)_CFLAGS += -DEVDEV_POINTER_DEVICE=\"$(EVDEV_POINTER_DEVICE)\"
+    endif
+else ifeq ($(INPUT_BACKEND),libinput)
     SWC_SOURCES += libswc/seat.c
     $(dir)_PACKAGES += libinput
     ifeq ($(ENABLE_LIBUDEV),1)
         $(dir)_CFLAGS += -DENABLE_LIBUDEV
         $(dir)_PACKAGES += libudev
     endif
+else
+    $(error Unknown INPUT_BACKEND '$(INPUT_BACKEND)'. Use libinput, evdev, or wscons.)
 endif
 
 ifeq ($(ENABLE_XWAYLAND),1)
