@@ -270,7 +270,7 @@ install: build
 	install -d ${DESTDIR}${LIBDIR}
 	install -d ${DESTDIR}${INCLUDEDIR}
 	install -d ${DESTDIR}${PKGCONFIGDIR}
-	install -m 755 launch/swc-launch ${DESTDIR}${BINDIR}/
+	install -m 4755 launch/swc-launch ${DESTDIR}${BINDIR}/
 	install -m 644 libswc/libswc.a ${DESTDIR}${LIBDIR}/
 	install -m 644 libswc/swc.h ${DESTDIR}${INCLUDEDIR}/
 	install -m 644 ${PROTO_GEN_H} ${DESTDIR}${INCLUDEDIR}/
