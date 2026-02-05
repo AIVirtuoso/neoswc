@@ -46,19 +46,31 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
-#ifndef minor
+#ifdef __linux__
 #include <sys/sysmacros.h>
 #endif
-#ifdef __NetBSD__
+
+#if defined(__NetBSD__)
 #include <dev/wscons/wsdisplay_usl_io.h>
-#else
+
+#elif defined(__OpenBSD__)
+#include <dev/wscons/wsdisplay_usl_io.h>
+
+#elif defined(__linux__)
 #include <linux/input.h>
 #include <linux/kd.h>
 #include <linux/vt.h>
+
+#else
+#include <dev/wscons/wsdisplay_usl_io.h>
 #endif
+
 #include <xf86drm.h>
 
 #define ARRAY_LENGTH(array) (sizeof(array) / sizeof(array)[0])
+
+static void activate(void);
+static void deactivate(void);
 
 static bool nflag;
 static int sigfd[2], sock[2];
@@ -132,20 +144,27 @@ stop_devices(bool fatal)
 static void
 cleanup(void)
 {
+#ifndef __OpenBSD__
 	struct vt_mode mode = {.mode = VT_AUTO};
+#endif
 
 	if (!original_vt_state.altered)
 		return;
 
-	/* Cleanup VT */
-	ioctl(tty_fd, VT_SETMODE, &mode);
-	ioctl(tty_fd, KDSETMODE, original_vt_state.console_mode);
-	ioctl(tty_fd, KDSKBMODE, original_vt_state.kb_mode);
-
 	/* Stop devices before switching the VT to make sure we have released the DRM
 	 * device before the next session tries to claim it. */
 	stop_devices(false);
+
+	/* Cleanup VT */
+#ifndef __OpenBSD__
+	ioctl(tty_fd, VT_SETMODE, &mode);
+	ioctl(tty_fd, KDSKBMODE, original_vt_state.kb_mode);
+#endif
+	ioctl(tty_fd, KDSETMODE, original_vt_state.console_mode);
+
+#ifndef __OpenBSD__
 	ioctl(tty_fd, VT_ACTIVATE, original_vt_state.vt);
+#endif
 
 	kill(0, SIGTERM);
 }
@@ -268,8 +287,15 @@ done:
 static void
 find_vt(char *vt, size_t size)
 {
-#ifdef __NetBSD__
+#if defined(__NetBSD__)
 	if (snprintf(vt, size, "/dev/ttyE1") >= size)
+		die("VT number is too large");
+#elif defined(__OpenBSD__)
+	const char *tty;
+	tty = ttyname(STDIN_FILENO);
+	if (!tty || strncmp(tty, "/dev/ttyC", 8) != 0)
+		die("must be run from wscons VT (/dev/ttyC*)");
+	if (snprintf(vt, size, "%s", tty) >= size)
 		die("VT number is too large");
 #else
 	char *vtnr;
@@ -315,23 +341,40 @@ setup_tty(int fd)
 {
 	struct stat st;
 	int vt;
+#ifndef __OpenBSD__
 	struct vt_stat state;
 	struct vt_mode mode = {
 		.mode = VT_PROCESS,
 		.relsig = SIGUSR1,
 		.acqsig = SIGUSR2
 	};
+#endif
 
 	if (fstat(fd, &st) == -1)
 		die("failed to stat TTY fd:");
 	vt = minor(st.st_rdev);
 
+#ifdef __OpenBSD__
+	if (!device_is_tty(st.st_rdev))
+		die("not a valid VT");
+#else
 	if (!device_is_tty(st.st_rdev) || vt == 0)
 		die("not a valid VT");
+#endif
 
+#ifdef __OpenBSD__
+	/* OpenBSD wscons has no VT_GETSTATE */
+#else
 	if (ioctl(fd, VT_GETSTATE, &state) == -1)
 		die("failed to get the current VT state:");
+#endif
+
+#ifndef __OpenBSD__
 	original_vt_state.vt = state.v_active;
+#else
+	original_vt_state.vt = vt;
+#endif
+
 #ifdef KDGETMODE
 	if (ioctl(fd, KDGKBMODE, &original_vt_state.kb_mode))
 		die("failed to get keyboard mode:");
@@ -347,14 +390,21 @@ setup_tty(int fd)
 		die("failed to set keyboard mode to K_OFF:");
 #endif
 	if (ioctl(fd, KDSETMODE, KD_GRAPHICS) == -1) {
-		perror("failed to set console mode to KD_GRAPHICS");
+		perror("KDSETMODE KD_GRAPHICS");
 		goto error0;
 	}
+
+#ifndef __OpenBSD__
 	if (ioctl(fd, VT_SETMODE, &mode) == -1) {
 		perror("failed to set VT mode");
 		goto error1;
 	}
+#endif
 
+#ifdef __OpenBSD__
+	/* OpenBSD wscons has no VT_PROCESS mode; just cont. on current ttyC* */
+	activate();
+#else
 	if (vt == original_vt_state.vt) {
 		activate();
 	} else if (!nflag) {
@@ -368,18 +418,40 @@ setup_tty(int fd)
 			goto error2;
 		}
 	}
+#endif
+
+#ifdef __OpenBSD__
+	/* OpenBSD wscons already on active VT */
+	activate();
+#else
+	if (vt == original_vt_state.vt) {
+		activate();
+	} else if (!nflag) {
+		if (ioctl(fd, VT_ACTIVATE, vt) == -1) {
+			perror("failed to activate VT");
+			goto error2;
+		}
+
+		if (ioctl(fd, VT_WAITACTIVE, vt) == -1) {
+			perror("failed to wait for VT to become active");
+			goto error2;
+		}
+	}
+#endif
 
 	original_vt_state.altered = true;
 
 	return;
 
+#ifndef __OpenBSD__
 error2:
 	mode = (struct vt_mode){.mode = VT_AUTO };
 	ioctl(fd, VT_SETMODE, &mode);
 error1:
-	ioctl(fd, KDSETMODE, original_vt_state.console_mode);
-error0:
 	ioctl(fd, KDSKBMODE, original_vt_state.kb_mode);
+#endif
+error0:
+	ioctl(fd, KDSETMODE, original_vt_state.console_mode);
 	exit(EXIT_FAILURE);
 }
 
@@ -482,6 +554,16 @@ main(int argc, char *argv[])
 
 	sprintf(buf, "%d", sock[1]);
 	setenv(SWC_LAUNCH_SOCKET_ENV, buf, 1);
+
+	/* make sure XDG_RUNTIME_DIR is set */
+	if (!getenv("XDG_RUNTIME_DIR")) {
+		uid_t uid = getuid();
+		snprintf(buf, sizeof(buf), "/tmp/XDG_RUNTIME_DIR_%d", uid);
+		if (mkdir(buf, 0700) == -1 && errno != EEXIST)
+			die("mkdir %s:", buf);
+		setenv("XDG_RUNTIME_DIR", buf, 1);
+		fprintf(stderr, "set XDG_RUNTIME_DIR=%s\n", buf);
+	}
 
 	if ((errno = posix_spawnattr_init(&attr)))
 		die("posix_spawnattr_init:");

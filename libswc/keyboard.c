@@ -150,11 +150,20 @@ update_keymap(struct xkb *xkb)
 
 	unlink(keymap_path);
 
+#ifdef __linux__
+	/* preallocate if available */
 	if (posix_fallocate(xkb->keymap.fd, 0, xkb->keymap.size) != 0 &&
 	    ftruncate(xkb->keymap.fd, xkb->keymap.size) != 0) {
 		WARNING("Could not resize XKB keymap file\n");
 		goto error2;
 	}
+#else
+	/* otherwise, ftruncate() is fine */
+	if (ftruncate(xkb->keymap.fd, xkb->keymap.size) != 0) {
+		WARNING("Could not resize XKB keymap file\n");
+		goto error2;
+	}
+#endif
 
 	xkb->keymap.area = mmap(NULL, xkb->keymap.size, PROT_READ | PROT_WRITE, MAP_SHARED, xkb->keymap.fd, 0);
 

@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -56,11 +57,15 @@ struct ws_xkb_map {
 static const struct ws_xkb_map ws_xkb_encodings[] = {
 	{ KB_UK, "gb" },
 	{ KB_BE, "be" },
+#ifdef KB_CZ
 	{ KB_CZ, "cz" },
+#endif
 	{ KB_DK, "dk" },
 	{ KB_NL, "nl" },
 	{ KB_DE, "de" },
+#ifdef KB_GR
 	{ KB_GR, "gr" },
+#endif
 	{ KB_HU, "hu" },
 	{ KB_IT, "it" },
 	{ KB_JP, "jp" },
@@ -207,7 +212,10 @@ ws_to_xkb(unsigned type, int key)
 	case WSKBD_TYPE_PC_AT:
 		return wsXtMap[key];
 	case WSKBD_TYPE_USB:
+#ifdef WSKBD_TYPE_MAPLE
 	case WSKBD_TYPE_MAPLE:
+		return wsUsbMap[key];
+#endif
 		return wsUsbMap[key];
 	default:
 		fprintf(stderr, "Unknown wskbd type %d\n", type);
@@ -296,23 +304,54 @@ handle_ws_data(int fd, uint32_t mask, void *data)
 static bool
 initialize_wscons(struct seat *seat)
 {
+#ifdef WSMOUSE_EVENT_VERSION
 	int mouse_ver = WSMOUSE_EVENT_VERSION;
+#endif
+#ifdef WSKBDIO_EVENT_VERSION
 	int kbd_ver = WSKBDIO_EVENT_VERSION;
+#endif
 	int encoding_layout;
 	kbd_t encoding;
 	unsigned i;
 
-	if ((seat->mouse_fd = launch_open_device("/dev/wsmouse", O_RDONLY | O_NONBLOCK)) == -1) {
+#ifdef WSMOUSE_EVENT_VERSION
+	int mouse_ver = WSMOUSE_EVENT_VERSION;
+#endif
+#ifdef WSKBDIO_EVENT_VERSION
+	int kbd_ver = WSKBDIO_EVENT_VERSION;
+#endif
+
+	if ((seat->mouse_fd = launch_open_device("/dev/wsmouse", O_RDWR | O_NONBLOCK)) == -1) {
 		ERROR("Could not open mouse device\n");
 		goto error0;
 	}
-	if ((seat->kbd_fd = launch_open_device("/dev/wskbd", O_RDONLY | O_NONBLOCK)) == -1) {
+	if ((seat->kbd_fd = launch_open_device("/dev/wskbd", O_RDWR | O_NONBLOCK)) == -1) {
 		ERROR("Could not open keyboard device\n");
 		goto error1;
 	}
 
+#ifdef WSMOUSEIO_SETVERSION
 	(void)ioctl(seat->mouse_fd, WSMOUSEIO_SETVERSION, &mouse_ver);
+#endif
+#ifdef WSKBDIO_SETVERSION
 	(void)ioctl(seat->kbd_fd, WSKBDIO_SETVERSION, &kbd_ver);
+#endif
+
+	/* set devices to nativemode to receive events */
+#ifdef WSMOUSEIO_SETMODE
+	{
+		int mode = WSMOUSE_COMPAT;  /* use compat mode; it sends events */
+		if (ioctl(seat->mouse_fd, WSMOUSEIO_SETMODE, &mode) == -1)
+			fprintf(stderr, "wscons: WSMOUSEIO_SETMODE failed: %s\n", strerror(errno));
+	}
+#endif /* WSMOUSEIO_SETMODE */
+#ifdef WSKBDIO_SETMODE
+	{
+		int mode = WSKBD_TRANSLATED;  /* use translated mode for key events */
+		if (ioctl(seat->kbd_fd, WSKBDIO_SETMODE, &mode) == -1)
+			fprintf(stderr, "wscons: WSKBDIO_SETMODE failed: %s\n", strerror(errno));
+	}
+#endif /* WSKBDIO_SETMODE */
 
 	if (ioctl(seat->kbd_fd, WSKBDIO_GTYPE, &seat->kbd_type) == -1) {
 		ERROR("Could not get keyboard type\n");
@@ -361,6 +400,7 @@ seat_create(struct wl_display *display, const char *seat_name)
 	if (!seat)
 		goto error0;
 
+	seat->ignore = false;
 	memset(&seat->names, 0, sizeof(seat->names));
 	seat->names.rules = "base";
 	seat->names.model = "pc105";

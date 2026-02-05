@@ -32,6 +32,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <wayland-server.h>
@@ -43,6 +44,7 @@ struct pool {
 	struct swc_shm *shm;
 	void *data;
 	uint32_t size;
+	int fd;
 	unsigned references;
 };
 
@@ -52,12 +54,21 @@ struct pool_reference {
 };
 
 static void *
-swc_mremap(void *oldp, size_t oldsize, size_t newsize)
+swc_mremap(struct pool *pool, void *oldp, size_t oldsize, size_t newsize)
 {
 #ifdef __NetBSD__
 	return mremap(oldp, oldsize, NULL, newsize, 0);
-#else /* Linux-style mremap */
+#elif defined(__linux__)
 	return mremap(oldp, oldsize, newsize, MREMAP_MAYMOVE);
+#else
+	void *newp;
+
+	newp = mmap(NULL, newsize, PROT_READ, MAP_SHARED, pool->fd, 0);
+	if (newp == MAP_FAILED)
+		return MAP_FAILED;
+
+	(void)munmap(oldp, oldsize);
+	return newp;
 #endif
 }
 
@@ -68,6 +79,7 @@ unref_pool(struct pool *pool)
 		return;
 
 	munmap(pool->data, pool->size);
+	close(pool->fd);
 	free(pool);
 }
 
@@ -148,7 +160,12 @@ resize(struct wl_client *client, struct wl_resource *resource, int32_t size)
 	struct pool *pool = wl_resource_get_user_data(resource);
 	void *data;
 
-	data = swc_mremap(pool->data, pool->size, size);
+	if (ftruncate(pool->fd, size) != 0) {
+		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "ftruncate failed: %s", strerror(errno));
+		return;
+	}
+
+	data = swc_mremap(pool, pool->data, pool->size, size);
 	if (data == MAP_FAILED) {
 		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "mremap failed: %s", strerror(errno));
 		return;
@@ -186,9 +203,10 @@ create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id,
 		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "mmap failed: %s", strerror(errno));
 		goto error2;
 	}
-	close(fd);
+	/* close(fd); */
 	pool->size = size;
 	pool->references = 1;
+	pool->fd = fd;
 	return;
 
 error2:

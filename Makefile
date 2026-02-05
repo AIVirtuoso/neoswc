@@ -159,6 +159,8 @@ cursor/convert_font.o: cursor/convert_font.c
 LAUNCH_DEVMAJOR=launch/devmajor-linux.c
 .if ${UNAME} == "NetBSD"
 LAUNCH_DEVMAJOR=launch/devmajor-netbsd.c
+.elif ${UNAME} == "OpenBSD"
+LAUNCH_DEVMAJOR=launch/devmajor-openbsd.c
 .endif
 
 launch/swc-launch: launch/launch.o launch/protocol.o launch/${LAUNCH_DEVMAJOR:T:R}.o
@@ -244,7 +246,11 @@ libswc/libswc-internal.o: ${SWC_OBJECTS}
 
 libswc/libswc.o: libswc/libswc-internal.o
 	@echo "  OBJCOPY $@"
+.if ${UNAME} == "OpenBSD"
+	@cp ${.ALLSRC} ${.TARGET}
+.else
 	@${OBJCOPY} --localize-hidden ${.ALLSRC} ${.TARGET}
+.endif
 
 libswc/libswc.a: libswc/libswc.o
 	@echo "  AR $@"
