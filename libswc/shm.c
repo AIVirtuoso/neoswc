@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <wayland-server.h>
 #include <wld/pixman.h>
@@ -159,12 +160,25 @@ resize(struct wl_client *client, struct wl_resource *resource, int32_t size)
 {
 	struct pool *pool = wl_resource_get_user_data(resource);
 	void *data;
+	struct stat st;
 
-	if (ftruncate(pool->fd, size) != 0) {
-		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "ftruncate failed: %s", strerror(errno));
+	if (fstat(pool->fd, &st) != 0) {
+		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "fstat failed: %s", strerror(errno));
 		return;
 	}
+	if (st.st_size < size) {
+		if (ftruncate(pool->fd, size) != 0) {
+			int saved = errno;
+			/* some clients seal memfd  if size is already fine, allo */
+			if ((saved == EPERM || saved == EACCES) && fstat(pool->fd, &st) == 0 && st.st_size >= size) {
+				goto remap;
+			}
+			wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "ftruncate failed: %s", strerror(saved));
+			return;
+		}
+	}
 
+remap:
 	data = swc_mremap(pool, pool->data, pool->size, size);
 	if (data == MAP_FAILED) {
 		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "mremap failed: %s", strerror(errno));
