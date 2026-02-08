@@ -21,7 +21,7 @@ struct wld_buffer *wallbuf = NULL;
 uint32_t bgcolor = 0xff000000;
 
 EXPORT void
-swc_wallpaper_init(char* path)
+swc_wallpaper_set(char* path)
 {
 	int width, height, chan;
 	unsigned char *loaded;

@@ -438,10 +438,10 @@ extern struct wld_buffer *wallbuf;
 
 /**
  * Set wallpaper to image from fs path.
- * TODO: scaling, tiling, maybe diff image for each screen
+ * TODO: tiling, maybe diff image for each screen
  */
 
-void swc_wallpaper_init(char* path);
+void swc_wallpaper_set(char* path);
 
 /**
  * Set wallpaper to a single color
