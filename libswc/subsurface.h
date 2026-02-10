@@ -41,10 +41,19 @@ struct subsurface {
 	struct wl_listener surface_destroy_listener;
 	struct wl_listener parent_destroy_listener;
 	struct wl_list link;
+	struct wl_list pending_link;
+	struct wl_list current_link;
 	int32_t x, y;
+	int32_t pending_x, pending_y;
+	bool pending_position;
 	bool sync;
 	bool pending;
+	bool added;
 };
+
+bool subsurface_is_synchronized(const struct subsurface *subsurface);
+void subsurface_update_visibility(struct subsurface *subsurface);
+void subsurface_parent_commit(struct surface *parent);
 
 struct subsurface *subsurface_new(struct wl_client *client, uint32_t version, uint32_t id,
                                   struct surface *surface, struct surface *parent);

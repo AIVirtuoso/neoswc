@@ -54,6 +54,10 @@ struct surface_state {
 	pixman_region32_t input;
 
 	struct wl_list frame_callbacks;
+
+	/* subsurface order; double-buffered with surface state. */
+	struct wl_list subsurfaces_below;
+	struct wl_list subsurfaces_above;
 };
 
 struct surface {
@@ -80,5 +84,6 @@ struct surface {
 
 struct surface *surface_new(struct wl_client *client, uint32_t version, uint32_t id);
 void surface_set_view(struct surface *surface, struct view *view);
+void surface_commit_pending(struct surface *surface);
 
 #endif

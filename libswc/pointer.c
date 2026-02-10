@@ -112,14 +112,18 @@ enter(struct input_focus_handler *handler, struct wl_list *resources, struct com
 	struct wl_resource *resource;
 	uint32_t serial;
 	wl_fixed_t surface_x, surface_y;
+	int32_t origin_x, origin_y;
 
 	if (wl_list_empty(resources)) {
 		pointer_set_cursor(pointer, cursor_left_ptr);
 		return;
 	}
 	serial = wl_display_next_serial(swc.display);
-	surface_x = pointer->x - wl_fixed_from_int(view->base.geometry.x);
-	surface_y = pointer->y - wl_fixed_from_int(view->base.geometry.y);
+	/* do based on buffer origin, holy fuck */
+	origin_x = view->base.geometry.x - view->buffer_offset_x;
+	origin_y = view->base.geometry.y - view->buffer_offset_y;
+	surface_x = pointer->x - wl_fixed_from_int(origin_x);
+	surface_y = pointer->y - wl_fixed_from_int(origin_y);
 	wl_resource_for_each (resource, resources)
 		wl_pointer_send_enter(resource, serial, view->surface->resource, surface_x, surface_y);
 }
@@ -349,12 +353,15 @@ client_handle_motion(struct pointer_handler *handler, uint32_t time, wl_fixed_t 
 	struct pointer *pointer = wl_container_of(handler, pointer, client_handler);
 	struct wl_resource *resource;
 	wl_fixed_t sx, sy;
+	int32_t origin_x, origin_y;
 
 	if (wl_list_empty(&pointer->focus.active))
 		return false;
 
-	sx = x - wl_fixed_from_int(pointer->focus.view->base.geometry.x);
-	sy = y - wl_fixed_from_int(pointer->focus.view->base.geometry.y);
+	origin_x = pointer->focus.view->base.geometry.x - pointer->focus.view->buffer_offset_x;
+	origin_y = pointer->focus.view->base.geometry.y - pointer->focus.view->buffer_offset_y;
+	sx = x - wl_fixed_from_int(origin_x);
+	sy = y - wl_fixed_from_int(origin_y);
 	wl_resource_for_each (resource, &pointer->focus.active)
 		wl_pointer_send_motion(resource, time, sx, sy);
 	return true;

@@ -59,6 +59,8 @@ state_initialize(struct surface_state *state)
 	pixman_region32_init_with_extents(&state->input, &infinite_extents);
 
 	wl_list_init(&state->frame_callbacks);
+	wl_list_init(&state->subsurfaces_below);
+	wl_list_init(&state->subsurfaces_above);
 }
 
 static void
@@ -267,10 +269,15 @@ surface_apply_pending(struct surface *surface, bool flush_children)
 	if (surface->subsurface)
 		surface->subsurface->pending = false;
 
+	if (surface->subsurface)
+		subsurface_update_visibility(surface->subsurface);
+
+	subsurface_parent_commit(surface);
+
 	if (flush_children) {
 		struct subsurface *child;
 		wl_list_for_each (child, &surface->subsurfaces, link) {
-			if (!child->sync || !child->pending)
+			if (!child->pending || !subsurface_is_synchronized(child))
 				continue;
 			if (child->surface)
 				surface_apply_pending(child->surface, true);
@@ -283,7 +290,7 @@ commit(struct wl_client *client, struct wl_resource *resource)
 {
 	struct surface *surface = wl_resource_get_user_data(resource);
 
-	if (surface->subsurface && surface->subsurface->sync) {
+	if (surface->subsurface && subsurface_is_synchronized(surface->subsurface)) {
 		surface->subsurface->pending = true;
 		return;
 	}
@@ -401,4 +408,10 @@ surface_set_view(struct surface *surface, struct view *view)
 		view_attach(view, surface->state.buffer);
 		view_update(view);
 	}
+}
+
+void
+surface_commit_pending(struct surface *surface)
+{
+	surface_apply_pending(surface, true);
 }

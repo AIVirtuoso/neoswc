@@ -28,6 +28,18 @@
 #include "surface.h"
 #include "util.h"
 
+static bool
+is_descendant_of(struct surface *ancestor, struct surface *surface)
+{
+	while (surface && surface->subsurface) {
+		surface = surface->subsurface->parent;
+		if (surface == ancestor)
+			return true;
+	}
+
+	return false;
+}
+
 static void
 get_subsurface(struct wl_client *client, struct wl_resource *resource,
                uint32_t id, struct wl_resource *surface_resource, struct wl_resource *parent_resource)
@@ -36,11 +48,20 @@ get_subsurface(struct wl_client *client, struct wl_resource *resource,
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 	struct surface *parent = wl_resource_get_user_data(parent_resource);
 
-	if (!surface || !parent || surface == parent)
+	if (!surface || !parent) {
+		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE, "invalid surface");
 		return;
+	}
 
-	if (surface->subsurface)
+	if (surface == parent || is_descendant_of(surface, parent)) {
+		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_PARENT, "invalid parent surface");
 		return;
+	}
+
+	if (surface->subsurface) {
+		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE, "surface already has a subsurface role");
+		return;
+	}
 
 	subsurface = subsurface_new(client, wl_resource_get_version(resource), id, surface, parent);
 

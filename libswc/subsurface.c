@@ -30,6 +30,20 @@
 #include <stdlib.h>
 #include <wayland-server.h>
 
+bool
+subsurface_is_synchronized(const struct subsurface *subsurface)
+{
+	while (subsurface) {
+		if (subsurface->sync)
+			return true;
+		if (!subsurface->parent)
+			return false;
+		subsurface = subsurface->parent->subsurface;
+	}
+
+	return false;
+}
+
 static void
 subsurface_update_position(struct subsurface *subsurface)
 {
@@ -50,15 +64,98 @@ subsurface_update_position(struct subsurface *subsurface)
 }
 
 static void
-handle_parent_view_move(struct view_handler *handler)
+list_remove_if_linked(struct wl_list *link)
+{
+	if (!wl_list_empty(link)) {
+		wl_list_remove(link);
+		wl_list_init(link);
+	}
+}
+
+void
+subsurface_update_visibility(struct subsurface *subsurface)
+{
+	struct compositor_view *view;
+	struct compositor_view *parent_view;
+
+	if (!subsurface || !subsurface->surface || !subsurface->parent)
+		return;
+
+	view = compositor_view(subsurface->surface->view);
+	parent_view = compositor_view(subsurface->parent->view);
+	if (!view || !parent_view)
+		return;
+
+	if (subsurface->added && parent_view->visible && subsurface->surface->state.buffer)
+		compositor_view_show(view);
+	else
+		compositor_view_hide(view);
+}
+
+static void
+handle_parent_view_change(struct view_handler *handler)
 {
 	struct subsurface *subsurface = wl_container_of(handler, subsurface, parent_view_handler);
 	subsurface_update_position(subsurface);
 }
 
+static void
+handle_parent_view_resize(struct view_handler *handler, uint32_t old_width, uint32_t old_height)
+{
+	(void)old_width;
+	(void)old_height;
+	handle_parent_view_change(handler);
+}
+
 static const struct view_handler_impl parent_view_handler_impl = {
-	.move = handle_parent_view_move,
+	.attach = handle_parent_view_change,
+	.move = handle_parent_view_change,
+	.resize = handle_parent_view_resize,
 };
+
+static struct subsurface *
+subsurface_find_sibling(struct subsurface *subsurface, struct surface *surface)
+{
+	struct surface *parent = subsurface->parent;
+	struct subsurface *sibling;
+
+	if (!parent)
+		return NULL;
+
+	wl_list_for_each (sibling, &parent->pending.state.subsurfaces_below, pending_link) {
+		if (sibling->surface == surface && sibling != subsurface)
+			return sibling;
+	}
+
+	wl_list_for_each (sibling, &parent->pending.state.subsurfaces_above, pending_link) {
+		if (sibling->surface == surface && sibling != subsurface)
+			return sibling;
+	}
+
+	return NULL;
+}
+
+static bool
+is_valid_sibling(struct subsurface *subsurface, struct surface *sibling_surface,
+                 struct subsurface **sibling_subsurface)
+{
+	struct subsurface *sibling;
+
+	if (!subsurface->parent || !sibling_surface || sibling_surface == subsurface->surface)
+		return false;
+
+	if (sibling_surface == subsurface->parent) {
+		*sibling_subsurface = NULL;
+		return true;
+	}
+
+	sibling = subsurface_find_sibling(subsurface, sibling_surface);
+	if (!sibling)
+		return false;
+
+	*sibling_subsurface = sibling;
+	return true;
+}
 
 static void
 handle_surface_destroy(struct wl_listener *listener, void *data)
@@ -94,6 +191,9 @@ handle_parent_destroy(struct wl_listener *listener, void *data)
 		wl_list_init(&subsurface->link);
 	}
 
+	list_remove_if_linked(&subsurface->pending_link);
+	list_remove_if_linked(&subsurface->current_link);
+
 	subsurface->parent = NULL;
 }
 
@@ -103,9 +203,9 @@ set_position(struct wl_client *client, struct wl_resource *resource, int32_t x, 
 	(void)client;
 	struct subsurface *subsurface = wl_resource_get_user_data(resource);
 
-	subsurface->x = x;
-	subsurface->y = y;
-	subsurface_update_position(subsurface);
+	subsurface->pending_x = x;
+	subsurface->pending_y = y;
+	subsurface->pending_position = true;
 }
 
 static void
@@ -114,17 +214,20 @@ place_above(struct wl_client *client, struct wl_resource *resource, struct wl_re
 	(void)client;
 	struct subsurface *subsurface = wl_resource_get_user_data(resource);
 	struct surface *sibling_surface = wl_resource_get_user_data(sibling_resource);
-	struct compositor_view *view = compositor_view(subsurface->surface->view);
-	struct compositor_view *sibling_view = compositor_view(sibling_surface->view);
+	struct subsurface *sibling_subsurface;
 
-	if (!view || !sibling_view || view == sibling_view)
+	if (!is_valid_sibling(subsurface, sibling_surface, &sibling_subsurface)) {
+		wl_resource_post_error(resource, WL_SUBSURFACE_ERROR_BAD_SURFACE, "invalid sibling surface");
 		return;
+	}
 
-	if (view->parent != sibling_view->parent)
-		return;
-
-	wl_list_remove(&view->link);
-	wl_list_insert(sibling_view->link.prev, &view->link);
+	if (!sibling_subsurface) {
+		wl_list_remove(&subsurface->pending_link);
+		wl_list_insert(&subsurface->parent->pending.state.subsurfaces_above, &subsurface->pending_link);
+	} else {
+		wl_list_remove(&subsurface->pending_link);
+		wl_list_insert(&sibling_subsurface->pending_link, &subsurface->pending_link);
+	}
 }
 
 static void
@@ -133,17 +236,20 @@ place_below(struct wl_client *client, struct wl_resource *resource, struct wl_re
 	(void)client;
 	struct subsurface *subsurface = wl_resource_get_user_data(resource);
 	struct surface *sibling_surface = wl_resource_get_user_data(sibling_resource);
-	struct compositor_view *view = compositor_view(subsurface->surface->view);
-	struct compositor_view *sibling_view = compositor_view(sibling_surface->view);
+	struct subsurface *sibling_subsurface;
 
-	if (!view || !sibling_view || view == sibling_view)
+	if (!is_valid_sibling(subsurface, sibling_surface, &sibling_subsurface)) {
+		wl_resource_post_error(resource, WL_SUBSURFACE_ERROR_BAD_SURFACE, "invalid sibling surface");
 		return;
+	}
 
-	if (view->parent != sibling_view->parent)
-		return;
-
-	wl_list_remove(&view->link);
-	wl_list_insert(&sibling_view->link, &view->link);
+	if (!sibling_subsurface) {
+		wl_list_remove(&subsurface->pending_link);
+		wl_list_insert(subsurface->parent->pending.state.subsurfaces_below.prev, &subsurface->pending_link);
+	} else {
+		wl_list_remove(&subsurface->pending_link);
+		wl_list_insert(sibling_subsurface->pending_link.prev, &subsurface->pending_link);
+	}
 }
 
 static void
@@ -159,7 +265,91 @@ set_desync(struct wl_client *client, struct wl_resource *resource)
 {
 	(void)client;
 	struct subsurface *subsurface = wl_resource_get_user_data(resource);
+	bool synchronized = subsurface_is_synchronized(subsurface);
+
 	subsurface->sync = false;
+
+	if (synchronized
+	 && !subsurface_is_synchronized(subsurface)
+	 && subsurface->pending
+	 && subsurface->surface)
+	{
+		surface_commit_pending(subsurface->surface);
+	}
+}
+
+void
+subsurface_parent_commit(struct surface *parent)
+{
+	struct subsurface *child;
+	struct compositor_view *parent_view;
+	struct compositor_view *reference;
+	struct compositor_view *child_view;
+
+	if (!parent)
+		return;
+
+	wl_list_for_each (child, &parent->subsurfaces, link)
+		list_remove_if_linked(&child->current_link);
+
+	wl_list_init(&parent->state.subsurfaces_below);
+	wl_list_init(&parent->state.subsurfaces_above);
+
+	wl_list_for_each (child, &parent->pending.state.subsurfaces_below, pending_link)
+		wl_list_insert(parent->state.subsurfaces_below.prev, &child->current_link);
+
+	wl_list_for_each (child, &parent->pending.state.subsurfaces_above, pending_link)
+		wl_list_insert(parent->state.subsurfaces_above.prev, &child->current_link);
+
+	parent_view = parent->view ? compositor_view(parent->view) : NULL;
+	if (parent_view) {
+		reference = parent_view;
+		wl_list_for_each_reverse (child, &parent->state.subsurfaces_below, current_link) {
+			if (!child->surface || !child->surface->view)
+				continue;
+
+			child_view = compositor_view(child->surface->view);
+			if (!child_view)
+				continue;
+
+			compositor_view_restack(child_view, reference, false);
+			reference = child_view;
+		}
+
+		reference = parent_view;
+		wl_list_for_each (child, &parent->state.subsurfaces_above, current_link) {
+			if (!child->surface || !child->surface->view)
+				continue;
+
+			child_view = compositor_view(child->surface->view);
+			if (!child_view)
+				continue;
+
+			compositor_view_restack(child_view, reference, true);
+			reference = child_view;
+		}
+	}
+
+	wl_list_for_each (child, &parent->subsurfaces, link) {
+		if (!child->pending_position)
+			continue;
+
+		child->x = child->pending_x;
+		child->y = child->pending_y;
+		child->pending_position = false;
+		subsurface_update_position(child);
+	}
+
+	wl_list_for_each (child, &parent->state.subsurfaces_below, current_link) {
+		if (!child->added)
+			child->added = true;
+		subsurface_update_visibility(child);
+	}
+	wl_list_for_each (child, &parent->state.subsurfaces_above, current_link) {
+		if (!child->added)
+			child->added = true;
+		subsurface_update_visibility(child);
+	}
 }
 
 static const struct wl_subsurface_interface subsurface_impl = {
@@ -200,6 +390,9 @@ subsurface_destroy(struct wl_resource *resource)
 		wl_list_init(&subsurface->link);
 	}
 
+	list_remove_if_linked(&subsurface->pending_link);
+	list_remove_if_linked(&subsurface->current_link);
+
 	if (subsurface->surface && subsurface->surface->view) {
 		struct compositor_view *view = compositor_view(subsurface->surface->view);
 		if (view && !view->window)
@@ -231,14 +424,20 @@ subsurface_new(struct wl_client *client, uint32_t version, uint32_t id,
 	subsurface->parent = parent;
 	subsurface->x = 0;
 	subsurface->y = 0;
+	subsurface->pending_x = 0;
+	subsurface->pending_y = 0;
+	subsurface->pending_position = false;
 	subsurface->sync = true;
 	subsurface->pending = false;
+	subsurface->added = false;
 
 	subsurface->parent_view_handler.impl = &parent_view_handler_impl;
 	wl_list_init(&subsurface->parent_view_handler.link);
 	wl_list_init(&subsurface->surface_destroy_listener.link);
 	wl_list_init(&subsurface->parent_destroy_listener.link);
 	wl_list_init(&subsurface->link);
+	wl_list_init(&subsurface->pending_link);
+	wl_list_init(&subsurface->current_link);
 
 	if (!surface->view)
 		compositor_create_view(surface);
@@ -257,6 +456,8 @@ subsurface_new(struct wl_client *client, uint32_t version, uint32_t id,
 	wl_list_insert(&parent_view->base.handlers, &subsurface->parent_view_handler.link);
 	subsurface_update_position(subsurface);
 	wl_list_insert(&parent->subsurfaces, &subsurface->link);
+	wl_list_insert(parent->pending.state.subsurfaces_above.prev, &subsurface->pending_link);
+	subsurface_update_visibility(subsurface);
 
 	subsurface->surface_destroy_listener.notify = handle_surface_destroy;
 	wl_resource_add_destroy_listener(surface->resource, &subsurface->surface_destroy_listener);

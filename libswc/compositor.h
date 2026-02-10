@@ -95,6 +95,7 @@ void compositor_view_destroy(struct compositor_view *view);
 struct compositor_view *compositor_view(struct view *view);
 
 void compositor_view_set_parent(struct compositor_view *view, struct compositor_view *parent);
+void compositor_view_restack(struct compositor_view *view, struct compositor_view *sibling, bool above);
 
 void compositor_view_show(struct compositor_view *view);
 void compositor_view_hide(struct compositor_view *view);
