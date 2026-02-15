@@ -18,3 +18,19 @@ features
 - screenshots
 - evdev-only input backend
 - probably more i forgot about
+
+build
+-----
+
+you will need: 
+- A C99-compatible compiler
+- BSD make
+- pkg-config
+- wayland-scanner, wayland-server, wayland-client
+- wayland-server, wayland-client
+- libdrm, pixman, xkbcommon
+- neuwld
+- on linux, either libudev or evdev, depending on your choice of input backend, neither on BSD
+- xcb, xcb-composite, xcb-ewmh and xcb-icccm if you want Xwayland support
+
+then, run bmake
