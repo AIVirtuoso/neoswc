@@ -250,6 +250,10 @@ struct swc_window {
 
 	struct swc_window *parent;
 	uint32_t motion_throttle_ms;
+	uint32_t min_width;
+	uint32_t min_height;
+	uint32_t max_width;
+	uint32_t max_height;
 };
 
 /**

@@ -55,6 +55,36 @@ should_throttle_motion(uint32_t throttle_ms, uint32_t *last_time, uint32_t time)
 	return false;
 }
 
+static uint32_t
+clamp_dimension(int32_t value, uint32_t min, uint32_t max)
+{
+	if (value < 0)
+		value = 0;
+
+	if (min && value < min)
+		value = min;
+
+	if (max) {
+		if (min && max < min)
+			max = min;
+
+		if (value > max)
+			value = max;
+	}
+
+	if (value > UINT32_MAX)
+		value = UINT32_MAX;
+
+	return value;
+}
+
+static void
+clamp_window_size(const struct window *window, uint32_t *width, uint32_t *height)
+{
+	*width = clamp_dimension(*width, window->base.min_width, window->base.max_width);
+	*height = clamp_dimension(*height, window->base.min_height, window->base.max_height);
+}
+
 static void
 handle_window_enter(struct wl_listener *listener, void *data)
 {
@@ -255,6 +285,8 @@ swc_window_set_size(struct swc_window *base, uint32_t width, uint32_t height)
 	struct window *window = INTERNAL(base);
 	struct swc_rectangle *geom = &window->view->base.geometry;
 
+	clamp_window_size(window, &width, &height);
+
 	if ((window->configure.pending && width == window->configure.width && height == window->configure.height)
 	 || (!window->configure.pending && width == geom->width && height == geom->height))
 	{
@@ -359,6 +391,7 @@ resize_motion(struct pointer_handler *handler, uint32_t time, wl_fixed_t fx, wl_
 	else if (window->resize.edges & SWC_WINDOW_EDGE_BOTTOM)
 		height = wl_fixed_to_int(fy) + window->resize.offset.y - geometry->y;
 
+	clamp_window_size(window, &width, &height);
 	window->impl->configure(window, width, height);
 
 	return true;
@@ -432,6 +465,10 @@ window_initialize(struct window *window, const struct window_impl *impl, struct 
 	window->view_handler.impl = &view_handler_impl;
 	window->view->window = window;
 	window->base.motion_throttle_ms = def_motion_throttle_ms;
+	window->base.min_width = 0;
+	window->base.min_height = 0;
+	window->base.max_width = 0;
+	window->base.max_height = 0;
 	window->managed = false;
 	window->mode = WINDOW_MODE_STACKED;
 	window->move.pending = false;
