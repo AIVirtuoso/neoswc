@@ -38,7 +38,22 @@
 
 #define INTERNAL(w) ((struct window *)(w))
 
+static const uint32_t def_motion_throttle_ms = 16;
+
 static const struct swc_window_handler null_handler;
+
+static bool
+should_throttle_motion(uint32_t throttle_ms, uint32_t *last_time, uint32_t time)
+{
+	if (!throttle_ms)
+		return false;
+
+	if (*last_time && time - *last_time < throttle_ms)
+		return true;
+
+	*last_time = time;
+	return false;
+}
 
 static void
 handle_window_enter(struct wl_listener *listener, void *data)
@@ -313,6 +328,10 @@ static bool
 move_motion(struct pointer_handler *handler, uint32_t time, wl_fixed_t fx, wl_fixed_t fy)
 {
 	struct window *window = wl_container_of(handler, window, move.interaction.handler);
+
+	if (should_throttle_motion(window->base.motion_throttle_ms, &window->move.last_time, time))
+		return true;
+
 	int32_t x = wl_fixed_to_int(fx) + window->move.offset.x,
 	        y = wl_fixed_to_int(fy) + window->move.offset.y;
 
@@ -326,6 +345,9 @@ resize_motion(struct pointer_handler *handler, uint32_t time, wl_fixed_t fx, wl_
 	struct window *window = wl_container_of(handler, window, resize.interaction.handler);
 	const struct swc_rectangle *geometry = &window->view->base.geometry;
 	uint32_t width = geometry->width, height = geometry->height;
+
+	if (should_throttle_motion(window->base.motion_throttle_ms, &window->resize.last_time, time))
+		return true;
 
 	if (window->resize.edges & SWC_WINDOW_EDGE_LEFT)
 		width -= wl_fixed_to_int(fx) + window->resize.offset.x - geometry->x;
@@ -409,9 +431,11 @@ window_initialize(struct window *window, const struct window_impl *impl, struct 
 	window->handler = &null_handler;
 	window->view_handler.impl = &view_handler_impl;
 	window->view->window = window;
+	window->base.motion_throttle_ms = def_motion_throttle_ms;
 	window->managed = false;
 	window->mode = WINDOW_MODE_STACKED;
 	window->move.pending = false;
+	window->move.last_time = 0;
 	window->move.interaction.active = false;
 	window->move.interaction.handler = (struct pointer_handler){
 		.motion = move_motion,
@@ -425,6 +449,7 @@ window_initialize(struct window *window, const struct window_impl *impl, struct 
 		.motion = resize_motion,
 		.button = handle_button,
 	};
+	window->resize.last_time = 0;
 
 	wl_list_insert(&window->view->base.handlers, &window->view_handler.link);
 
@@ -511,6 +536,7 @@ window_begin_move(struct window *window, struct button *button)
 	        py = wl_fixed_to_int(swc.seat->pointer->y);
 
 	begin_interaction(&window->move.interaction, button);
+	window->move.last_time = 0;
 	window->move.offset.x = geometry->x - px;
 	window->move.offset.y = geometry->y - py;
 }
@@ -529,6 +555,7 @@ window_begin_resize(struct window *window, uint32_t edges, struct button *button
 	        py = wl_fixed_to_int(swc.seat->pointer->y);
 
 	begin_interaction(&window->resize.interaction, button);
+	window->resize.last_time = 0;
 
 	if (!edges) {
 		edges |= (px < geometry->x + geometry->width / 2) ? SWC_WINDOW_EDGE_LEFT : SWC_WINDOW_EDGE_RIGHT;

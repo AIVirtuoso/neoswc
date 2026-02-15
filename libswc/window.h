@@ -66,6 +66,7 @@ struct window {
 
 		bool pending;
 		int32_t x, y;
+		uint32_t last_time;
 	} move;
 
 	struct {
@@ -74,6 +75,7 @@ struct window {
 			int32_t x, y;
 		} offset;
 		uint32_t edges;
+		uint32_t last_time;
 	} resize;
 
 	struct {

@@ -249,6 +249,7 @@ struct swc_window {
 	char *app_id;
 
 	struct swc_window *parent;
+	uint32_t motion_throttle_ms;
 };
 
 /**
