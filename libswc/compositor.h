@@ -48,6 +48,7 @@ struct swc_compositor {
 
 bool compositor_initialize(void);
 void compositor_finalize(void);
+void compositor_damage_all(void);
 
 struct compositor_view {
 	struct view base;

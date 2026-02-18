@@ -97,6 +97,7 @@ PROTO_EXTENSIONS= \
 	protocol/server-decoration.xml \
 	protocol/swc.xml \
 	protocol/swc_snap.xml \
+	protocol/swc_wallpaper.xml \
 	protocol/wayland-drm.xml \
 	${WAYLAND_PROTOCOLS_DATADIR}/stable/xdg-shell/xdg-shell.xml \
 	${WAYLAND_PROTOCOLS_DATADIR}/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml \
@@ -124,6 +125,7 @@ PROTO_GEN_C= \
 	protocol/server-decoration-protocol.c \
 	protocol/swc-protocol.c \
 	protocol/swc_snap-protocol.c \
+	protocol/swc_wallpaper-protocol.c \
 	protocol/wayland-drm-protocol.c \
 	protocol/xdg-decoration-unstable-v1-protocol.c \
 	protocol/xdg-shell-protocol.c
@@ -137,6 +139,8 @@ PROTO_GEN_H= \
 	protocol/swc-client-protocol.h \
 	protocol/swc_snap-server-protocol.h \
 	protocol/swc_snap-client-protocol.h \
+	protocol/swc_wallpaper-server-protocol.h \
+	protocol/swc_wallpaper-client-protocol.h \
 	protocol/wayland-drm-server-protocol.h \
 	protocol/wayland-drm-client-protocol.h \
 	protocol/xdg-decoration-unstable-v1-server-protocol.h \
@@ -213,6 +217,7 @@ SWC_SOURCES= \
 	protocol/server-decoration-protocol.c \
 	protocol/swc-protocol.c \
 	protocol/swc_snap-protocol.c \
+	protocol/swc_wallpaper-protocol.c \
 	protocol/wayland-drm-protocol.c \
 	protocol/xdg-decoration-unstable-v1-protocol.c \
 	protocol/xdg-shell-protocol.c
@@ -275,11 +280,13 @@ install: build
 	install -d ${DESTDIR}${BINDIR}
 	install -d ${DESTDIR}${LIBDIR}
 	install -d ${DESTDIR}${INCLUDEDIR}
+	install -d ${DESTDIR}${DATADIR}/swc
 	install -d ${DESTDIR}${PKGCONFIGDIR}
 	install -m 4755 launch/swc-launch ${DESTDIR}${BINDIR}/
 	install -m 644 libswc/libswc.a ${DESTDIR}${LIBDIR}/
 	install -m 644 libswc/swc.h ${DESTDIR}${INCLUDEDIR}/
 	install -m 644 ${PROTO_GEN_H} ${DESTDIR}${INCLUDEDIR}/
+	install -m 644 protocol/swc.xml protocol/swc_snap.xml protocol/swc_wallpaper.xml ${DESTDIR}${DATADIR}/swc/
 	install -m 644 swc.pc ${DESTDIR}${PKGCONFIGDIR}/
 
 clean:

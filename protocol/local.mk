@@ -7,6 +7,7 @@ PROTOCOL_EXTENSIONS =           \
     $(dir)/server-decoration.xml\
     $(dir)/swc.xml              \
     $(dir)/swc_snap.xml         \
+    $(dir)/swc_wallpaper.xml    \
     $(dir)/wayland-drm.xml      \
     $(wayland_protocols)/stable/xdg-shell/xdg-shell.xml \
     $(wayland_protocols)/unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml \
@@ -29,5 +30,7 @@ CLEAN_FILES += ${dir}/${proto_base}-protocol.c \
 
 install-$(dir): | $(DESTDIR)$(DATADIR)/swc
 	install -m 644 protocol/swc.xml $(DESTDIR)$(DATADIR)/swc
+	install -m 644 protocol/swc_snap.xml $(DESTDIR)$(DATADIR)/swc
+	install -m 644 protocol/swc_wallpaper.xml $(DESTDIR)$(DATADIR)/swc
 
 include common.mk

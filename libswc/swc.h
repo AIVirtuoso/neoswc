@@ -35,6 +35,7 @@ extern "C" {
 struct libinput_device;
 struct wl_display;
 struct wl_event_loop;
+struct wld_buffer;
 
 /**
  * gett the current cursor position
@@ -438,19 +439,21 @@ int swc_add_axis_binding(uint32_t modifiers, uint32_t axis, swc_axis_binding_han
 
 /* Wallpaper {{{ */
 
-extern unsigned char *wallpaper;
-extern struct wld_buffer *wallbuf;
+/**
+ * Set fallback wallpaper buffer for all screens that dom't have an override.
+ */
+void swc_wallpaper_set_buffer(struct wld_buffer *buffer);
 
 /**
- * Set wallpaper to image from fs path.
- * TODO: tiling, maybe diff image for each screen
+ * Set wallpaper buffer for specified screen id.
+ *
+ * Passing NULL clears the override for that screen.
  */
-
-void swc_wallpaper_set(char* path);
+void swc_wallpaper_set_buffer_for_screen(uint8_t screen_id, struct wld_buffer *buffer);
 
 /**
  * Set wallpaper to a single color
- * pretty much ignored if wallpaper is set to image
+ * used when no wallpaper buffer is set
  * defaults to black
  */
 

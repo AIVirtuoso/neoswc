@@ -44,6 +44,7 @@
 #include "subsurface.h"
 #include "util.h"
 #include "view.h"
+#include "wallpaper.h"
 #include "window.h"
 
 #include <errno.h>
@@ -109,6 +110,7 @@ static struct {
 
 	bool updating;
 	struct wl_global *global;
+	bool initialized;
 
 	/* zoom level (1.0 = normal, >1 = zoomed in, <1 = zoomed out) */
 	float zoom;
@@ -302,7 +304,7 @@ repaint_view(struct target *target, struct compositor_view *view, pixman_region3
 }
 
 static void
-renderer_repaint(struct target *target, pixman_region32_t *damage, pixman_region32_t *base_damage, struct wl_list *views)
+renderer_repaint(struct target *target, pixman_region32_t *damage, pixman_region32_t *base_damage, struct wl_list *views, struct screen *screen)
 {
 	struct compositor_view *view;
 	const struct swc_rectangle *target_geom = &target->view->geometry;
@@ -314,10 +316,12 @@ renderer_repaint(struct target *target, pixman_region32_t *damage, pixman_region
 	wld_set_target_surface(swc.drm->renderer, target->surface);
 
 	if (pixman_region32_not_empty(base_damage)) {
+		struct wld_buffer *background = swc_wallpaper_buffer_for_screen(screen);
+
 		pixman_region32_translate(base_damage, -target->view->geometry.x, -target->view->geometry.y);
 		
-		if(wallbuf)
-			wld_copy_region(swc.drm->renderer, wallbuf, 0, 0, base_damage);
+		if (background)
+			wld_copy_region(swc.drm->renderer, background, 0, 0, base_damage);
 
 		else
 			wld_fill_region(swc.drm->renderer, bgcolor, base_damage);
@@ -508,6 +512,23 @@ schedule_updates(uint32_t screens)
 	compositor.scheduled_updates |= screens;
 }
 
+void
+compositor_damage_all(void)
+{
+	struct screen *screen;
+
+	if (!compositor.initialized)
+		return;
+
+	wl_list_for_each (screen, &swc.screens, link) {
+		pixman_region32_union_rect(&compositor.damage, &compositor.damage,
+			screen->base.geometry.x, screen->base.geometry.y,
+			screen->base.geometry.width, screen->base.geometry.height);
+	}
+
+	schedule_updates(-1);
+}
+
 static void
 overlay_damage_region(int32_t x, int32_t y, uint32_t width, uint32_t height, uint32_t border_width)
 {
@@ -597,6 +618,7 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 	int32_t cx = screen_x + width / 2;
 	int32_t cy = screen_y + height / 2;
 	struct compositor_view *view;
+	struct wld_buffer *background;
 
 	struct wld_buffer *buffer = wld_create_buffer(swc.shm->context,
 		width, height, WLD_FORMAT_XRGB8888, WLD_FLAG_MAP);
@@ -610,8 +632,9 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 
 	pixman_region32_t full;
 	pixman_region32_init_rect(&full, 0, 0, width, height);
-	if (wallbuf)
-		wld_copy_region(swc.shm->renderer, wallbuf, 0, 0, &full);
+	background = swc_wallpaper_buffer_for_screen(screen);
+	if (background)
+		wld_copy_region(swc.shm->renderer, background, 0, 0, &full);
 	else
 		wld_fill_region(swc.shm->renderer, bgcolor, &full);
 	pixman_region32_fini(&full);
@@ -1327,7 +1350,7 @@ update_screen(struct screen *screen)
 		pixman_region32_translate(&damage, geom->x, geom->y);
 		pixman_region32_init(&base_damage);
 		pixman_region32_subtract(&base_damage, &damage, &compositor.opaque);
-		renderer_repaint(target, &damage, &base_damage, &compositor.views);
+		renderer_repaint(target, &damage, &base_damage, &compositor.views, screen);
 		pixman_region32_fini(&damage);
 		pixman_region32_fini(&base_damage);
 	}
@@ -1508,12 +1531,16 @@ compositor_initialize(void)
 	for (keysym = XKB_KEY_XF86Switch_VT_1; keysym <= XKB_KEY_XF86Switch_VT_12; ++keysym)
 		swc_add_binding(SWC_BINDING_KEY, SWC_MOD_ANY, keysym, &handle_switch_vt, NULL);
 
+	compositor.initialized = true;
+
 	return true;
 }
 
 void
 compositor_finalize(void)
 {
+	compositor.initialized = false;
+
 	if (compositor.zoom_buffer)
 		wld_buffer_unreference(compositor.zoom_buffer);
 	pixman_region32_fini(&compositor.damage);
@@ -1540,6 +1567,7 @@ compositor_render_to_shm(struct screen *screen)
 	pixman_region32_t region;
 	pixman_region32_t damage;
 	uint32_t caps;
+	struct wld_buffer *background;
 
 	/* create shm buf */
 	buffer = wld_create_buffer(swc.shm->context, width, height,
@@ -1559,8 +1587,9 @@ compositor_render_to_shm(struct screen *screen)
 	pixman_region32_init_rect(&damage, screen->base.geometry.x, screen->base.geometry.y, width, height);
 
 	/* background */
-	if (wallbuf)
-		wld_copy_region(swc.shm->renderer, wallbuf, 0, 0, &region);
+	background = swc_wallpaper_buffer_for_screen(screen);
+	if (background)
+		wld_copy_region(swc.shm->renderer, background, 0, 0, &region);
 	else
 		wld_fill_region(swc.shm->renderer, bgcolor, &region);
 

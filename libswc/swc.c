@@ -40,6 +40,7 @@
 #include "snap.h"
 #include "subcompositor.h"
 #include "util.h"
+#include "wallpaper.h"
 #include "window.h"
 #include "xdg_decoration.h"
 #include "xdg_shell.h"
@@ -222,10 +223,16 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, con
 		goto error14;
 	}
 
+	swc.wallpaper_manager = swc_wallpaper_manager_create(display);
+	if (!swc.wallpaper_manager) {
+		ERROR("Could not initialize wallpaper manager\n");
+		goto error15;
+	}
+
 #ifdef ENABLE_XWAYLAND
 	if (!xserver_initialize()) {
 		ERROR("Could not initialize xwayland\n");
-		goto error15;
+		goto error16;
 	}
 #endif
 
@@ -234,9 +241,11 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, con
 	return true;
 
 #ifdef ENABLE_XWAYLAND
+error16:
+	wl_global_destroy(swc.wallpaper_manager);
+#endif
 error15:
 	wl_global_destroy(swc.snap_manager);
-#endif
 error14:
 	wl_global_destroy(swc.panel_manager);
 error13:
@@ -275,6 +284,7 @@ swc_finalize(void)
 #ifdef ENABLE_XWAYLAND
 	xserver_finalize();
 #endif
+	wl_global_destroy(swc.wallpaper_manager);
 	wl_global_destroy(swc.snap_manager);
 	wl_global_destroy(swc.panel_manager);
 	wl_global_destroy(swc.xdg_decoration_manager);

@@ -61,6 +61,7 @@ SWC_SOURCES =                       \
     protocol/server-decoration-protocol.c \
     protocol/swc-protocol.c         \
     protocol/swc_snap-protocol.c    \
+    protocol/swc_wallpaper-protocol.c \
     protocol/wayland-drm-protocol.c \
     protocol/xdg-decoration-unstable-v1-protocol.c \
     protocol/xdg-shell-protocol.c
@@ -113,6 +114,7 @@ $(call objects,dmabuf): protocol/linux-dmabuf-unstable-v1-server-protocol.h
 $(call objects,drm drm_buffer): protocol/wayland-drm-server-protocol.h
 $(call objects,kde_decoration): protocol/server-decoration-server-protocol.h
 $(call objects,snap): protocol/swc_snap-server-protocol.h
+$(call objects,wallpaper): protocol/swc_wallpaper-server-protocol.h
 $(call objects,xdg_decoration): protocol/xdg-decoration-unstable-v1-server-protocol.h
 $(call objects,xdg_shell): protocol/xdg-shell-server-protocol.h
 $(call objects,pointer): cursor/cursor_data.h
