@@ -25,28 +25,32 @@
 #include "internal.h"
 #include "panel.h"
 
-#include <wayland-server.h>
 #include "swc-server-protocol.h"
+#include <wayland-server.h>
 
 static void
-create_panel(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *surface_resource)
+create_panel(struct wl_client *client, struct wl_resource *resource,
+             uint32_t id, struct wl_resource *surface_resource)
 {
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 
-	if (!panel_new(client, wl_resource_get_version(resource), id, surface))
+	if (!panel_new(client, wl_resource_get_version(resource), id, surface)) {
 		wl_client_post_no_memory(client);
+	}
 }
 
 static const struct swc_panel_manager_interface panel_manager_impl = {
-	.create_panel = create_panel,
+    .create_panel = create_panel,
 };
 
 static void
-bind_panel_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+bind_panel_manager(struct wl_client *client, void *data, uint32_t version,
+                   uint32_t id)
 {
 	struct wl_resource *resource;
 
-	resource = wl_resource_create(client, &swc_panel_manager_interface, version, id);
+	resource =
+	    wl_resource_create(client, &swc_panel_manager_interface, version, id);
 	if (!resource) {
 		wl_client_post_no_memory(client);
 		return;
@@ -57,5 +61,6 @@ bind_panel_manager(struct wl_client *client, void *data, uint32_t version, uint3
 struct wl_global *
 panel_manager_create(struct wl_display *display)
 {
-	return wl_global_create(display, &swc_panel_manager_interface, 1, NULL, &bind_panel_manager);
+	return wl_global_create(display, &swc_panel_manager_interface, 1, NULL,
+	                        &bind_panel_manager);
 }

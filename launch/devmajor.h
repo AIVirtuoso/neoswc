@@ -24,8 +24,8 @@
 #ifndef DEVMAJOR_H
 #define DEVMAJOR_H
 
-#include <sys/stat.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 bool device_is_input(dev_t);
 

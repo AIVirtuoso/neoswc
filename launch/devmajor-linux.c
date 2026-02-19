@@ -25,9 +25,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <sys/sysmacros.h>
-#include <linux/major.h>
 #include "devmajor.h"
+#include <linux/major.h>
+#include <sys/sysmacros.h>
 
 #ifndef DRM_MAJOR
 #define DRM_MAJOR 226

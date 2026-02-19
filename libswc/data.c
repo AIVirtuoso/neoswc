@@ -36,48 +36,55 @@ struct data {
 };
 
 static void
-offer_accept(struct wl_client *client, struct wl_resource *offer, uint32_t serial, const char *mime_type)
+offer_accept(struct wl_client *client, struct wl_resource *offer,
+             uint32_t serial, const char *mime_type)
 {
 	struct data *data = wl_resource_get_user_data(offer);
 
 	/* Protect against expired data_offers being used. */
-	if (!data)
+	if (!data) {
 		return;
+	}
 
 	wl_data_source_send_target(data->source, mime_type);
 }
 
 static void
-offer_receive(struct wl_client *client, struct wl_resource *offer, const char *mime_type, int fd)
+offer_receive(struct wl_client *client, struct wl_resource *offer,
+              const char *mime_type, int fd)
 {
 	struct data *data = wl_resource_get_user_data(offer);
 
 	/* Protect against expired data_offers being used. */
-	if (!data)
+	if (!data) {
 		return;
+	}
 
 	wl_data_source_send_send(data->source, mime_type, fd);
 	close(fd);
 }
 
 static const struct wl_data_offer_interface data_offer_impl = {
-	.accept = offer_accept,
-	.receive = offer_receive,
-	.destroy = destroy_resource,
+    .accept = offer_accept,
+    .receive = offer_receive,
+    .destroy = destroy_resource,
 };
 
 static void
-source_offer(struct wl_client *client, struct wl_resource *source, const char *mime_type)
+source_offer(struct wl_client *client, struct wl_resource *source,
+             const char *mime_type)
 {
 	struct data *data = wl_resource_get_user_data(source);
 	char *s, **dst;
 
 	s = strdup(mime_type);
-	if (!s)
+	if (!s) {
 		goto error0;
+	}
 	dst = wl_array_add(&data->mime_types, sizeof(*dst));
-	if (!dst)
+	if (!dst) {
 		goto error1;
+	}
 	*dst = s;
 	return;
 
@@ -88,8 +95,8 @@ error0:
 }
 
 static const struct wl_data_source_interface data_source_impl = {
-	.offer = source_offer,
-	.destroy = destroy_resource,
+    .offer = source_offer,
+    .destroy = destroy_resource,
 };
 
 static void
@@ -99,19 +106,19 @@ data_destroy(struct wl_resource *source)
 	struct wl_resource *offer;
 	char **mime_type;
 
-	wl_array_for_each (mime_type, &data->mime_types)
-		free(*mime_type);
+	wl_array_for_each(mime_type, &data->mime_types) free(*mime_type);
 	wl_array_release(&data->mime_types);
 
 	/* After this data_source is destroyed, each of the data_offer objects
-	 * associated with the data_source has a pointer to a free'd struct. We can't
-	 * destroy the resources because this results in a segfault on the client when
-	 * it correctly tries to call data_source.destroy. However, a misbehaving
-	 * client could still attempt to call accept or receive on the data_offer,
-	 * which would crash the server.
+	 * associated with the data_source has a pointer to a free'd struct. We
+	 * can't destroy the resources because this results in a segfault on the
+	 * client when it correctly tries to call data_source.destroy. However, a
+	 * misbehaving client could still attempt to call accept or receive on the
+	 * data_offer, which would crash the server.
 	 *
 	 * So, we clear the user data on each of the offers to protect us. */
-	wl_resource_for_each (offer, &data->offers) {
+	wl_resource_for_each(offer, &data->offers)
+	{
 		wl_resource_set_user_data(offer, NULL);
 		wl_resource_set_destructor(offer, NULL);
 	}
@@ -125,15 +132,19 @@ data_source_new(struct wl_client *client, uint32_t version, uint32_t id)
 	struct data *data;
 
 	data = malloc(sizeof(*data));
-	if (!data)
+	if (!data) {
 		goto error0;
+	}
 	wl_array_init(&data->mime_types);
 	wl_list_init(&data->offers);
 
-	data->source = wl_resource_create(client, &wl_data_source_interface, version, id);
-	if (!data->source)
+	data->source =
+	    wl_resource_create(client, &wl_data_source_interface, version, id);
+	if (!data->source) {
 		goto error1;
-	wl_resource_set_implementation(data->source, &data_source_impl, data, &data_destroy);
+	}
+	wl_resource_set_implementation(data->source, &data_source_impl, data,
+	                               &data_destroy);
 
 	return data->source;
 
@@ -144,15 +155,18 @@ error0:
 }
 
 struct wl_resource *
-data_offer_new(struct wl_client *client, struct wl_resource *source, uint32_t version)
+data_offer_new(struct wl_client *client, struct wl_resource *source,
+               uint32_t version)
 {
 	struct data *data = wl_resource_get_user_data(source);
 	struct wl_resource *offer;
 
 	offer = wl_resource_create(client, &wl_data_offer_interface, version, 0);
-	if (!offer)
+	if (!offer) {
 		return NULL;
-	wl_resource_set_implementation(offer, &data_offer_impl, data, &remove_resource);
+	}
+	wl_resource_set_implementation(offer, &data_offer_impl, data,
+	                               &remove_resource);
 	wl_list_insert(&data->offers, wl_resource_get_link(offer));
 
 	return offer;
@@ -164,6 +178,6 @@ data_send_mime_types(struct wl_resource *source, struct wl_resource *offer)
 	struct data *data = wl_resource_get_user_data(source);
 	char **mime_type;
 
-	wl_array_for_each (mime_type, &data->mime_types)
-		wl_data_offer_send_offer(offer, *mime_type);
+	wl_array_for_each(mime_type, &data->mime_types)
+	    wl_data_offer_send_offer(offer, *mime_type);
 }

@@ -21,10 +21,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <sys/stat.h>
+#include "devmajor.h"
 #include <stdlib.h>
 #include <string.h>
-#include "devmajor.h"
+#include <sys/stat.h>
 
 static bool
 devname_is(dev_t rdev, const char *prefix)
@@ -33,8 +33,9 @@ devname_is(dev_t rdev, const char *prefix)
 	size_t len;
 
 	name = devname(rdev, S_IFCHR);
-	if (!name || name[0] == '?' || name[1] == '?')
+	if (!name || name[0] == '?' || name[1] == '?') {
 		return false;
+	}
 
 	len = strlen(prefix);
 	return strncmp(name, prefix, len) == 0;
@@ -43,12 +44,15 @@ devname_is(dev_t rdev, const char *prefix)
 bool
 device_is_input(dev_t rdev)
 {
-	if (devname_is(rdev, "wskbd"))
+	if (devname_is(rdev, "wskbd")) {
 		return true;
-	if (devname_is(rdev, "wsmouse"))
+	}
+	if (devname_is(rdev, "wsmouse")) {
 		return true;
-	if (devname_is(rdev, "wsmux"))
+	}
+	if (devname_is(rdev, "wsmux")) {
 		return true;
+	}
 	return false;
 }
 
@@ -64,11 +68,10 @@ device_is_drm(dev_t rdev)
 	const char *n;
 
 	n = devname(rdev, S_IFCHR);
-	if (!n)
+	if (!n) {
 		return false;
+	}
 
-	return
-		strncmp(n, "drm", 3) == 0 ||
-		strncmp(n, "dri/card", 8) == 0 ||
-		strncmp(n, "dri/renderD", 11) == 0;
+	return strncmp(n, "drm", 3) == 0 || strncmp(n, "dri/card", 8) == 0 ||
+	       strncmp(n, "dri/renderD", 11) == 0;
 }

@@ -5,6 +5,7 @@
 
 struct wl_client;
 
-struct wl_resource *region_new(struct wl_client *client, uint32_t version, uint32_t id);
+struct wl_resource *
+region_new(struct wl_client *client, uint32_t version, uint32_t id);
 
 #endif

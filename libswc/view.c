@@ -29,12 +29,13 @@
 
 #include <wld/wld.h>
 
-#define HANDLE(view, handler, method, ...) \
-	do { \
-		wl_list_for_each (handler, &view->handlers, link) { \
-			if (handler->impl->method) \
-				handler->impl->method(handler, ##__VA_ARGS__); \
-		} \
+#define HANDLE(view, handler, method, ...)                                     \
+	do {                                                                       \
+		wl_list_for_each(handler, &view->handlers, link)                       \
+		{                                                                      \
+			if (handler->impl->method)                                         \
+				handler->impl->method(handler, ##__VA_ARGS__);                 \
+		}                                                                      \
 	} while (0)
 
 void
@@ -53,8 +54,9 @@ view_initialize(struct view *view, const struct view_impl *impl)
 void
 view_finalize(struct view *view)
 {
-	if (view->buffer)
+	if (view->buffer) {
 		wld_buffer_unreference(view->buffer);
+	}
 }
 
 int
@@ -63,14 +65,17 @@ view_attach(struct view *view, struct wld_buffer *buffer)
 	int ret;
 	struct view_handler *handler;
 
-	if ((ret = view->impl->attach(view, buffer)) < 0)
+	if ((ret = view->impl->attach(view, buffer)) < 0) {
 		return ret;
+	}
 
-	if (view->buffer)
+	if (view->buffer) {
 		wld_buffer_unreference(view->buffer);
+	}
 
-	if (buffer)
+	if (buffer) {
 		wld_buffer_reference(buffer);
+	}
 
 	view->buffer = buffer;
 	HANDLE(view, handler, attach);
@@ -95,8 +100,9 @@ view_set_position(struct view *view, int32_t x, int32_t y)
 {
 	struct view_handler *handler;
 
-	if (x == view->geometry.x && y == view->geometry.y)
+	if (x == view->geometry.x && y == view->geometry.y) {
 		return false;
+	}
 
 	view->geometry.x = x;
 	view->geometry.y = y;
@@ -110,10 +116,12 @@ view_set_size(struct view *view, uint32_t width, uint32_t height)
 {
 	struct view_handler *handler;
 
-	if (view->geometry.width == width && view->geometry.height == height)
+	if (view->geometry.width == width && view->geometry.height == height) {
 		return false;
+	}
 
-	uint32_t old_width = view->geometry.width, old_height = view->geometry.height;
+	uint32_t old_width = view->geometry.width,
+	         old_height = view->geometry.height;
 
 	view->geometry.width = width;
 	view->geometry.height = height;
@@ -125,16 +133,19 @@ view_set_size(struct view *view, uint32_t width, uint32_t height)
 bool
 view_set_size_from_buffer(struct view *view, struct wld_buffer *buffer)
 {
-	return view_set_size(view, buffer ? buffer->width : 0, buffer ? buffer->height : 0);
+	return view_set_size(view, buffer ? buffer->width : 0,
+	                     buffer ? buffer->height : 0);
 }
 
 void
 view_set_screens(struct view *view, uint32_t screens)
 {
-	if (view->screens == screens)
+	if (view->screens == screens) {
 		return;
+	}
 
-	uint32_t entered = screens & ~view->screens, left = view->screens & ~screens;
+	uint32_t entered = screens & ~view->screens,
+	         left = view->screens & ~screens;
 	struct view_handler *handler;
 
 	view->screens = screens;
@@ -147,9 +158,11 @@ view_update_screens(struct view *view)
 	uint32_t screens = 0;
 	struct screen *screen;
 
-	wl_list_for_each (screen, &swc.screens, link) {
-		if (rectangle_overlap(&screen->base.geometry, &view->geometry))
+	wl_list_for_each(screen, &swc.screens, link)
+	{
+		if (rectangle_overlap(&screen->base.geometry, &view->geometry)) {
 			screens |= screen_mask(screen);
+		}
 	}
 
 	view_set_screens(view, screens);

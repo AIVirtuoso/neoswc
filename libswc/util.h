@@ -26,27 +26,26 @@
 
 #include "swc.h"
 
-#include <stdlib.h>
-#include <stdio.h>
+#include <pixman.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#include <pixman.h>
 #include <wayland-util.h>
 
 #define EXPORT __attribute__((visibility("default")))
 
 #if ENABLE_DEBUG
-#define MESSAGE_SOURCE \
-	fprintf(stderr, "[swc:%s:%d] ", __FILE__, __LINE__);
+#define MESSAGE_SOURCE fprintf(stderr, "[swc:%s:%d] ", __FILE__, __LINE__);
 #else
 #define MESSAGE_SOURCE
 #endif
 
-#define MESSAGE(type, format, ...) \
-	do { \
-		MESSAGE_SOURCE \
-		fprintf(stderr, type ": " format, ##__VA_ARGS__); \
+#define MESSAGE(type, format, ...)                                             \
+	do {                                                                       \
+		MESSAGE_SOURCE                                                         \
+		fprintf(stderr, type ": " format, ##__VA_ARGS__);                      \
 	} while (false)
 
 #define WARNING(format, ...) MESSAGE("WARNING", format, ##__VA_ARGS__)
@@ -66,8 +65,10 @@
 struct wl_resource;
 struct wl_client;
 
-void remove_resource(struct wl_resource *resource);
-void destroy_resource(struct wl_client *client, struct wl_resource *resource);
+void
+remove_resource(struct wl_resource *resource);
+void
+destroy_resource(struct wl_client *client, struct wl_resource *resource);
 
 static inline uint32_t
 get_time(void)
@@ -81,27 +82,32 @@ get_time(void)
 extern pixman_box32_t infinite_extents;
 
 static inline bool
-rectangle_contains_point(const struct swc_rectangle *rectangle, int32_t x, int32_t y)
+rectangle_contains_point(const struct swc_rectangle *rectangle,
+                         int32_t x,
+                         int32_t y)
 {
-	return x > rectangle->x && x < rectangle->x + rectangle->width
-	       && y > rectangle->y && y < rectangle->y + rectangle->height;
+	return x > rectangle->x && x < rectangle->x + rectangle->width &&
+	       y > rectangle->y && y < rectangle->y + rectangle->height;
 }
 
 static inline bool
-rectangle_overlap(const struct swc_rectangle *r1, const struct swc_rectangle *r2)
+rectangle_overlap(const struct swc_rectangle *r1,
+                  const struct swc_rectangle *r2)
 {
-	return (MAX(r1->x + r1->width, r2->x + r2->width) - MIN(r1->x, r2->x)
-	        < r1->width + r2->width)
-	       && (MAX(r1->y + r1->height, r2->y + r2->height) - MIN(r1->y, r2->y)
-	           < r1->height + r2->height);
+	return (MAX(r1->x + r1->width, r2->x + r2->width) - MIN(r1->x, r2->x) <
+	        r1->width + r2->width) &&
+	       (MAX(r1->y + r1->height, r2->y + r2->height) - MIN(r1->y, r2->y) <
+	        r1->height + r2->height);
 }
 
 static inline void
 array_remove(struct wl_array *array, void *item, size_t size)
 {
-	size_t bytes = array->size - ((intptr_t)item + size - (intptr_t)array->data);
-	if (bytes > 0)
+	size_t bytes =
+	    array->size - ((intptr_t)item + size - (intptr_t)array->data);
+	if (bytes > 0) {
 		memmove(item, (void *)((intptr_t)item + size), bytes);
+	}
 	array->size -= size;
 }
 

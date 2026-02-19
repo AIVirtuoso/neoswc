@@ -26,8 +26,8 @@
 
 #include "input.h"
 
-#include <xkbcommon/xkbcommon.h>
 #include <wayland-util.h>
+#include <xkbcommon/xkbcommon.h>
 
 /* Keycodes are offset by 8 in XKB. */
 #define XKB_KEY(key) ((key) + 8)
@@ -48,8 +48,10 @@ struct keyboard_modifier_state {
 };
 
 struct keyboard_handler {
-	bool (*key)(struct keyboard *keyboard, uint32_t time, struct key *key, uint32_t state);
-	bool (*modifiers)(struct keyboard *keyboard, const struct keyboard_modifier_state *state);
+	bool (*key)(struct keyboard *keyboard, uint32_t time, struct key *key,
+	            uint32_t state);
+	bool (*modifiers)(struct keyboard *keyboard,
+	                  const struct keyboard_modifier_state *state);
 
 	struct wl_list link;
 };
@@ -84,11 +86,19 @@ struct keyboard {
 	uint32_t modifiers;
 };
 
-struct keyboard *keyboard_create(struct xkb_rule_names *names);
-void keyboard_destroy(struct keyboard *keyboard);
-bool keyboard_reset(struct keyboard *keyboard);
-void keyboard_set_focus(struct keyboard *keyboard, struct compositor_view *view);
-struct wl_resource *keyboard_bind(struct keyboard *keyboard, struct wl_client *client, uint32_t version, uint32_t id);
-void keyboard_handle_key(struct keyboard *keyboard, uint32_t time, uint32_t key, uint32_t state);
+struct keyboard *
+keyboard_create(struct xkb_rule_names *names);
+void
+keyboard_destroy(struct keyboard *keyboard);
+bool
+keyboard_reset(struct keyboard *keyboard);
+void
+keyboard_set_focus(struct keyboard *keyboard, struct compositor_view *view);
+struct wl_resource *
+keyboard_bind(struct keyboard *keyboard, struct wl_client *client,
+              uint32_t version, uint32_t id);
+void
+keyboard_handle_key(struct keyboard *keyboard, uint32_t time, uint32_t key,
+                    uint32_t state);
 
 #endif

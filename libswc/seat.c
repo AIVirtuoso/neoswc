@@ -43,11 +43,11 @@
 #include <libinput.h>
 #include <linux/input.h>
 #ifdef ENABLE_LIBUDEV
-# include <libudev.h>
+#include <libudev.h>
 #endif
 
 #ifndef NETLINK_MASK
-# define NETLINK_MASK 4
+#define NETLINK_MASK 4
 #endif
 
 struct seat {
@@ -76,15 +76,18 @@ struct seat {
 static void
 handle_keyboard_focus_event(struct wl_listener *listener, void *data)
 {
-	struct seat *seat = wl_container_of(listener, seat, keyboard_focus_listener);
+	struct seat *seat =
+	    wl_container_of(listener, seat, keyboard_focus_listener);
 	struct event *ev = data;
 	struct input_focus_event_data *event_data = ev->data;
 
-	if (ev->type != INPUT_FOCUS_EVENT_CHANGED)
+	if (ev->type != INPUT_FOCUS_EVENT_CHANGED) {
 		return;
+	}
 
 	if (event_data->new) {
-		struct wl_client *client = wl_resource_get_client(event_data->new->surface->resource);
+		struct wl_client *client =
+		    wl_resource_get_client(event_data->new->surface->resource);
 
 		/* Offer the selection to the new focus. */
 		data_device_offer_selection(seat->base.data_device, client);
@@ -97,11 +100,14 @@ handle_data_device_event(struct wl_listener *listener, void *data)
 	struct seat *seat = wl_container_of(listener, seat, data_device_listener);
 	struct event *ev = data;
 
-	if (ev->type != DATA_DEVICE_EVENT_SELECTION_CHANGED)
+	if (ev->type != DATA_DEVICE_EVENT_SELECTION_CHANGED) {
 		return;
+	}
 
-	if (seat->base.keyboard->focus.client)
-		data_device_offer_selection(seat->base.data_device, seat->base.keyboard->focus.client);
+	if (seat->base.keyboard->focus.client) {
+		data_device_offer_selection(seat->base.data_device,
+		                            seat->base.keyboard->focus.client);
+	}
 }
 
 static void
@@ -116,8 +122,9 @@ handle_swc_event(struct wl_listener *listener, void *data)
 		keyboard_reset(seat->base.keyboard);
 		break;
 	case SWC_EVENT_ACTIVATED:
-		if (libinput_resume(seat->libinput) != 0)
+		if (libinput_resume(seat->libinput) != 0) {
 			WARNING("Failed to resume libinput context\n");
+		}
 		break;
 	}
 }
@@ -128,17 +135,22 @@ get_pointer(struct wl_client *client, struct wl_resource *resource, uint32_t id)
 {
 	struct seat *seat = wl_resource_get_user_data(resource);
 
-	if (!pointer_bind(&seat->pointer, client, wl_resource_get_version(resource), id))
+	if (!pointer_bind(&seat->pointer, client, wl_resource_get_version(resource),
+	                  id)) {
 		wl_resource_post_no_memory(resource);
+	}
 }
 
 static void
-get_keyboard(struct wl_client *client, struct wl_resource *resource, uint32_t id)
+get_keyboard(struct wl_client *client, struct wl_resource *resource,
+             uint32_t id)
 {
 	struct seat *seat = wl_resource_get_user_data(resource);
 
-	if (!keyboard_bind(seat->base.keyboard, client, wl_resource_get_version(resource), id))
+	if (!keyboard_bind(seat->base.keyboard, client,
+	                   wl_resource_get_version(resource), id)) {
 		wl_resource_post_no_memory(resource);
+	}
 }
 
 static void
@@ -148,9 +160,9 @@ get_touch(struct wl_client *client, struct wl_resource *resource, uint32_t id)
 }
 
 static const struct wl_seat_interface seat_impl = {
-	.get_pointer = get_pointer,
-	.get_keyboard = get_keyboard,
-	.get_touch = get_touch,
+    .get_pointer = get_pointer,
+    .get_keyboard = get_keyboard,
+    .get_touch = get_touch,
 };
 
 static void
@@ -164,11 +176,13 @@ bind_seat(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(resource, &seat_impl, seat, &remove_resource);
+	wl_resource_set_implementation(resource, &seat_impl, seat,
+	                               &remove_resource);
 	wl_list_insert(&seat->resources, wl_resource_get_link(resource));
 
-	if (version >= 2)
+	if (version >= 2) {
 		wl_seat_send_name(resource, seat->name);
+	}
 
 	wl_seat_send_capabilities(resource, seat->capabilities);
 }
@@ -178,12 +192,13 @@ update_capabilities(struct seat *seat, uint32_t capabilities)
 {
 	struct wl_resource *resource;
 
-	if (!(~seat->capabilities & capabilities))
+	if (!(~seat->capabilities & capabilities)) {
 		return;
+	}
 
 	seat->capabilities |= capabilities;
 	wl_list_for_each(resource, &seat->resources, link)
-		wl_seat_send_capabilities(resource, seat->capabilities);
+	    wl_seat_send_capabilities(resource, seat->capabilities);
 }
 
 static int
@@ -199,8 +214,8 @@ close_restricted(int fd, void *user_data)
 }
 
 const struct libinput_interface libinput_interface = {
-	.open_restricted = open_restricted,
-	.close_restricted = close_restricted,
+    .open_restricted = open_restricted,
+    .close_restricted = close_restricted,
 };
 
 static uint32_t
@@ -208,10 +223,12 @@ device_capabilities(struct libinput_device *device)
 {
 	uint32_t capabilities = 0;
 
-	if (libinput_device_has_capability(device, LIBINPUT_DEVICE_CAP_KEYBOARD))
+	if (libinput_device_has_capability(device, LIBINPUT_DEVICE_CAP_KEYBOARD)) {
 		capabilities |= WL_SEAT_CAPABILITY_KEYBOARD;
-	if (libinput_device_has_capability(device, LIBINPUT_DEVICE_CAP_POINTER))
+	}
+	if (libinput_device_has_capability(device, LIBINPUT_DEVICE_CAP_POINTER)) {
 		capabilities |= WL_SEAT_CAPABILITY_POINTER;
+	}
 	/* TODO: Add touch device support
 	 * if (libinput_device_has_capability(device, LIBINPUT_DEVICE_CAP_TOUCH))
 	 * 	capabilities |= WL_SEAT_CAPABILITY_TOUCH;
@@ -247,8 +264,9 @@ handle_libinput_data(int fd, uint32_t mask, void *data)
 		case LIBINPUT_EVENT_DEVICE_ADDED:
 			device = libinput_event_get_device(generic_event);
 			update_capabilities(seat, device_capabilities(device));
-			if (swc.manager->new_device)
+			if (swc.manager->new_device) {
 				swc.manager->new_device(device);
+			}
 			break;
 		case LIBINPUT_EVENT_KEYBOARD_KEY:
 			event.k = libinput_event_get_keyboard_event(generic_event);
@@ -270,8 +288,12 @@ handle_libinput_data(int fd, uint32_t mask, void *data)
 			rect = &screen->base.geometry;
 			event.p = libinput_event_get_pointer_event(generic_event);
 			time = libinput_event_pointer_get_time(event.p);
-			x = wl_fixed_from_double(libinput_event_pointer_get_absolute_x_transformed(event.p, rect->width));
-			y = wl_fixed_from_double(libinput_event_pointer_get_absolute_y_transformed(event.p, rect->height));
+			x = wl_fixed_from_double(
+			    libinput_event_pointer_get_absolute_x_transformed(event.p,
+			                                                      rect->width));
+			y = wl_fixed_from_double(
+			    libinput_event_pointer_get_absolute_y_transformed(
+			        event.p, rect->height));
 			pointer_handle_absolute_motion(&seat->pointer, time, x, y);
 			pointer_handle_frame(&seat->pointer);
 			break;
@@ -282,15 +304,19 @@ handle_libinput_data(int fd, uint32_t mask, void *data)
 			state = libinput_event_pointer_get_button_state(event.p);
 			pointer_handle_button(&seat->pointer, time, key, state);
 			if (state == LIBINPUT_BUTTON_STATE_PRESSED) {
-		                /* qemu generates GEAR_UP/GEAR_DOWN events on scroll, so pass
+				/* qemu generates GEAR_UP/GEAR_DOWN events on scroll, so pass
 				 * those through as axis events. */
 				source = WL_POINTER_AXIS_SOURCE_WHEEL;
 				switch (key) {
 				case BTN_GEAR_DOWN:
-					pointer_handle_axis(&seat->pointer, time, WL_POINTER_AXIS_VERTICAL_SCROLL, source, wl_fixed_from_int(10), 120);
+					pointer_handle_axis(&seat->pointer, time,
+					                    WL_POINTER_AXIS_VERTICAL_SCROLL, source,
+					                    wl_fixed_from_int(10), 120);
 					break;
 				case BTN_GEAR_UP:
-					pointer_handle_axis(&seat->pointer, time, WL_POINTER_AXIS_VERTICAL_SCROLL, source, wl_fixed_from_int(-10), -120);
+					pointer_handle_axis(&seat->pointer, time,
+					                    WL_POINTER_AXIS_VERTICAL_SCROLL, source,
+					                    wl_fixed_from_int(-10), -120);
 					break;
 				}
 			}
@@ -309,17 +335,31 @@ handle_libinput_data(int fd, uint32_t mask, void *data)
 			event.p = libinput_event_get_pointer_event(generic_event);
 			time = libinput_event_pointer_get_time(event.p);
 			value120 = 0;
-			if (libinput_event_pointer_has_axis(event.p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL)) {
-				value = wl_fixed_from_double(libinput_event_pointer_get_scroll_value(event.p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL));
-				if (source == WL_POINTER_AXIS_SOURCE_WHEEL)
-					value120 = libinput_event_pointer_get_scroll_value_v120(event.p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL);
-				pointer_handle_axis(&seat->pointer, time, WL_POINTER_AXIS_VERTICAL_SCROLL, source, value, value120);
+			if (libinput_event_pointer_has_axis(
+			        event.p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL)) {
+				value = wl_fixed_from_double(
+				    libinput_event_pointer_get_scroll_value(
+				        event.p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL));
+				if (source == WL_POINTER_AXIS_SOURCE_WHEEL) {
+					value120 = libinput_event_pointer_get_scroll_value_v120(
+					    event.p, LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL);
+				}
+				pointer_handle_axis(&seat->pointer, time,
+				                    WL_POINTER_AXIS_VERTICAL_SCROLL, source,
+				                    value, value120);
 			}
-			if (libinput_event_pointer_has_axis(event.p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL)) {
-				value = wl_fixed_from_double(libinput_event_pointer_get_scroll_value(event.p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL));
-				if (source == WL_POINTER_AXIS_SOURCE_WHEEL)
-					value120 = libinput_event_pointer_get_scroll_value_v120(event.p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL);
-				pointer_handle_axis(&seat->pointer, time, WL_POINTER_AXIS_HORIZONTAL_SCROLL, source, value, value120);
+			if (libinput_event_pointer_has_axis(
+			        event.p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL)) {
+				value = wl_fixed_from_double(
+				    libinput_event_pointer_get_scroll_value(
+				        event.p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL));
+				if (source == WL_POINTER_AXIS_SOURCE_WHEEL) {
+					value120 = libinput_event_pointer_get_scroll_value_v120(
+					    event.p, LIBINPUT_POINTER_AXIS_SCROLL_HORIZONTAL);
+				}
+				pointer_handle_axis(&seat->pointer, time,
+				                    WL_POINTER_AXIS_HORIZONTAL_SCROLL, source,
+				                    value, value120);
 			}
 			pointer_handle_frame(&seat->pointer);
 			break;
@@ -342,9 +382,11 @@ initialize_libinput(struct seat *seat)
 		goto error0;
 	}
 
-	seat->libinput = libinput_udev_create_context(&libinput_interface, NULL, seat->udev);
+	seat->libinput =
+	    libinput_udev_create_context(&libinput_interface, NULL, seat->udev);
 #else
-	seat->libinput = libinput_netlink_create_context(&libinput_interface, NULL, NETLINK_MASK);
+	seat->libinput = libinput_netlink_create_context(&libinput_interface, NULL,
+	                                                 NETLINK_MASK);
 #endif
 
 	if (!seat->libinput) {
@@ -364,14 +406,17 @@ initialize_libinput(struct seat *seat)
 	}
 #endif
 
-	seat->libinput_source = wl_event_loop_add_fd(swc.event_loop, libinput_get_fd(seat->libinput), WL_EVENT_READABLE, &handle_libinput_data, seat);
+	seat->libinput_source =
+	    wl_event_loop_add_fd(swc.event_loop, libinput_get_fd(seat->libinput),
+	                         WL_EVENT_READABLE, &handle_libinput_data, seat);
 	if (!seat->libinput_source) {
 		ERROR("Could not create event source for libinput\n");
 		goto error2;
 	}
 
-	if (!swc.active)
+	if (!swc.active) {
 		libinput_suspend(seat->libinput);
+	}
 
 	return true;
 
@@ -391,16 +436,19 @@ seat_create(struct wl_display *display, const char *seat_name)
 	struct seat *seat;
 
 	seat = malloc(sizeof(*seat));
-	if (!seat)
+	if (!seat) {
 		goto error0;
+	}
 	seat->name = strdup(seat_name);
 	if (!seat->name) {
 		ERROR("Could not allocate seat name string\n");
 		goto error1;
 	}
-	seat->global = wl_global_create(display, &wl_seat_interface, 8, seat, &bind_seat);
-	if (!seat->global)
+	seat->global =
+	    wl_global_create(display, &wl_seat_interface, 8, seat, &bind_seat);
+	if (!seat->global) {
 		goto error2;
+	}
 	seat->capabilities = 0;
 	wl_list_init(&seat->resources);
 
@@ -413,7 +461,8 @@ seat_create(struct wl_display *display, const char *seat_name)
 		goto error3;
 	}
 	seat->data_device_listener.notify = &handle_data_device_event;
-	wl_signal_add(&seat->base.data_device->event_signal, &seat->data_device_listener);
+	wl_signal_add(&seat->base.data_device->event_signal,
+	              &seat->data_device_listener);
 
 	seat->base.keyboard = keyboard_create(NULL);
 	if (!seat->base.keyboard) {
@@ -421,7 +470,8 @@ seat_create(struct wl_display *display, const char *seat_name)
 		goto error4;
 	}
 	seat->keyboard_focus_listener.notify = handle_keyboard_focus_event;
-	wl_signal_add(&seat->base.keyboard->focus.event_signal, &seat->keyboard_focus_listener);
+	wl_signal_add(&seat->base.keyboard->focus.event_signal,
+	              &seat->keyboard_focus_listener);
 
 	if (!pointer_initialize(&seat->pointer)) {
 		ERROR("Could not initialize pointer\n");
@@ -429,8 +479,9 @@ seat_create(struct wl_display *display, const char *seat_name)
 	}
 	seat->base.pointer = &seat->pointer;
 
-	if (!initialize_libinput(seat))
+	if (!initialize_libinput(seat)) {
 		goto error6;
+	}
 
 	return &seat->base;
 

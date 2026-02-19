@@ -35,26 +35,32 @@ focus(struct input_focus *input_focus, struct compositor_view *view)
 
 	if (view) {
 		client = wl_resource_get_client(view->surface->resource);
-		wl_resource_for_each_safe (resource, tmp, &input_focus->inactive) {
+		wl_resource_for_each_safe(resource, tmp, &input_focus->inactive)
+		{
 			if (wl_resource_get_client(resource) == client) {
 				wl_list_remove(wl_resource_get_link(resource));
-				wl_list_insert(&input_focus->active, wl_resource_get_link(resource));
+				wl_list_insert(&input_focus->active,
+				               wl_resource_get_link(resource));
 			}
 		}
-		wl_signal_add(&view->destroy_signal, &input_focus->view_destroy_listener);
+		wl_signal_add(&view->destroy_signal,
+		              &input_focus->view_destroy_listener);
 	}
 
 	input_focus->client = client;
 	input_focus->view = view;
-	input_focus->handler->enter(input_focus->handler, &input_focus->active, view);
+	input_focus->handler->enter(input_focus->handler, &input_focus->active,
+	                            view);
 }
 
 static void
 unfocus(struct input_focus *input_focus)
 {
-	if (input_focus->view)
+	if (input_focus->view) {
 		wl_list_remove(&input_focus->view_destroy_listener.link);
-	input_focus->handler->leave(input_focus->handler, &input_focus->active, input_focus->view);
+	}
+	input_focus->handler->leave(input_focus->handler, &input_focus->active,
+	                            input_focus->view);
 	wl_list_insert_list(&input_focus->inactive, &input_focus->active);
 	wl_list_init(&input_focus->active);
 }
@@ -62,7 +68,8 @@ unfocus(struct input_focus *input_focus)
 static void
 handle_focus_view_destroy(struct wl_listener *listener, void *data)
 {
-	struct input_focus *input_focus = wl_container_of(listener, input_focus, view_destroy_listener);
+	struct input_focus *input_focus =
+	    wl_container_of(listener, input_focus, view_destroy_listener);
 
 	/* XXX: Should this call unfocus? */
 	wl_list_insert_list(&input_focus->inactive, &input_focus->active);
@@ -72,7 +79,8 @@ handle_focus_view_destroy(struct wl_listener *listener, void *data)
 }
 
 bool
-input_focus_initialize(struct input_focus *input_focus, struct input_focus_handler *handler)
+input_focus_initialize(struct input_focus *input_focus,
+                       struct input_focus_handler *handler)
 {
 	input_focus->client = NULL;
 	input_focus->view = NULL;
@@ -93,16 +101,19 @@ input_focus_finalize(struct input_focus *input_focus)
 }
 
 void
-input_focus_add_resource(struct input_focus *input_focus, struct wl_resource *resource)
+input_focus_add_resource(struct input_focus *input_focus,
+                         struct wl_resource *resource)
 {
 	struct wl_list resources, *target = &input_focus->inactive;
 
 	wl_list_init(&resources);
 	wl_list_insert(&resources, wl_resource_get_link(resource));
 
-	/* If this new input resource corresponds to the focused client, send an enter event. */
+	/* If this new input resource corresponds to the focused client, send an
+	 * enter event. */
 	if (wl_resource_get_client(resource) == input_focus->client) {
-		input_focus->handler->enter(input_focus->handler, &resources, input_focus->view);
+		input_focus->handler->enter(input_focus->handler, &resources,
+		                            input_focus->view);
 		target = &input_focus->active;
 	}
 
@@ -110,7 +121,8 @@ input_focus_add_resource(struct input_focus *input_focus, struct wl_resource *re
 }
 
 void
-input_focus_remove_resource(struct input_focus *input_focus, struct wl_resource *resource)
+input_focus_remove_resource(struct input_focus *input_focus,
+                            struct wl_resource *resource)
 {
 	wl_list_remove(wl_resource_get_link(resource));
 }
@@ -120,8 +132,9 @@ input_focus_set(struct input_focus *input_focus, struct compositor_view *view)
 {
 	struct input_focus_event_data data;
 
-	if (view == input_focus->view)
+	if (view == input_focus->view) {
 		return;
+	}
 
 	data.old = input_focus->view;
 	data.new = view;

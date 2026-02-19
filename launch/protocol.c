@@ -1,24 +1,23 @@
 #include "protocol.h"
 
-#include <sys/socket.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 
 ssize_t
 send_fd(int socket, int fd, struct iovec *iov, int iovlen)
 {
 	char control[CMSG_SPACE(sizeof(fd))];
 	struct msghdr message = {
-		.msg_name = NULL,
-		.msg_namelen = 0,
-		.msg_iov = iov,
-		.msg_iovlen = iovlen,
+	    .msg_name = NULL,
+	    .msg_namelen = 0,
+	    .msg_iov = iov,
+	    .msg_iovlen = iovlen,
 	};
 	struct cmsghdr *cmsg;
 
 	if (fd != -1) {
-		message.msg_control = control,
-		message.msg_controllen = sizeof(control);
+		message.msg_control = control, message.msg_controllen = sizeof(control);
 
 		cmsg = CMSG_FIRSTHDR(&message);
 		cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
@@ -40,10 +39,10 @@ receive_fd(int socket, int *fd, struct iovec *iov, int iovlen)
 	ssize_t size;
 	char control[CMSG_SPACE(sizeof(*fd))];
 	struct msghdr message = {
-		.msg_name = NULL,
-		.msg_namelen = 0,
-		.msg_iov = iov,
-		.msg_iovlen = iovlen,
+	    .msg_name = NULL,
+	    .msg_namelen = 0,
+	    .msg_iov = iov,
+	    .msg_iovlen = iovlen,
 	};
 	struct cmsghdr *cmsg;
 
@@ -54,12 +53,15 @@ receive_fd(int socket, int *fd, struct iovec *iov, int iovlen)
 	}
 
 	size = recvmsg(socket, &message, MSG_CMSG_CLOEXEC);
-	if (size < 0)
+	if (size < 0) {
 		return -1;
+	}
 
 	cmsg = CMSG_FIRSTHDR(&message);
-	if (fd && cmsg && cmsg->cmsg_len == CMSG_LEN(sizeof(*fd)) && cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS)
+	if (fd && cmsg && cmsg->cmsg_len == CMSG_LEN(sizeof(*fd)) &&
+	    cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
 		memcpy(fd, CMSG_DATA(cmsg), sizeof(*fd));
+	}
 
 	return size;
 }

@@ -51,11 +51,15 @@ struct subsurface {
 	bool added;
 };
 
-bool subsurface_is_synchronized(const struct subsurface *subsurface);
-void subsurface_update_visibility(struct subsurface *subsurface);
-void subsurface_parent_commit(struct surface *parent);
+bool
+subsurface_is_synchronized(const struct subsurface *subsurface);
+void
+subsurface_update_visibility(struct subsurface *subsurface);
+void
+subsurface_parent_commit(struct surface *parent);
 
-struct subsurface *subsurface_new(struct wl_client *client, uint32_t version, uint32_t id,
-                                  struct surface *surface, struct surface *parent);
+struct subsurface *
+subsurface_new(struct wl_client *client, uint32_t version, uint32_t id,
+               struct surface *surface, struct surface *parent);
 
 #endif

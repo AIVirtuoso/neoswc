@@ -26,9 +26,13 @@
 
 #include <stdbool.h>
 
-bool launch_initialize(void);
-void launch_finalize(void);
-int launch_open_device(const char *path, int flags);
-bool launch_activate_vt(unsigned vt);
+bool
+launch_initialize(void);
+void
+launch_finalize(void);
+int
+launch_open_device(const char *path, int flags);
+bool
+launch_activate_vt(unsigned vt);
 
 #endif

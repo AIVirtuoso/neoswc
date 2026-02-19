@@ -65,7 +65,9 @@ struct swc_launch_event {
 	};
 };
 
-ssize_t send_fd(int socket, int fd, struct iovec *iov, int iovlen);
-ssize_t receive_fd(int socket, int *fd, struct iovec *iov, int iovlen);
+ssize_t
+send_fd(int socket, int fd, struct iovec *iov, int iovlen);
+ssize_t
+receive_fd(int socket, int *fd, struct iovec *iov, int iovlen);
 
 #endif

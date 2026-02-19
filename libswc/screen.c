@@ -31,22 +31,28 @@
 #include "pointer.h"
 #include "util.h"
 
-#include <stdlib.h>
 #include "swc-server-protocol.h"
+#include <stdlib.h>
 
 #define INTERNAL(s) ((struct screen *)(s))
 
 static struct screen *active_screen;
 static const struct swc_screen_handler null_handler;
 
-static bool handle_motion(struct pointer_handler *handler, uint32_t time, wl_fixed_t x, wl_fixed_t y);
+static bool
+handle_motion(struct pointer_handler *handler,
+              uint32_t time,
+              wl_fixed_t x,
+              wl_fixed_t y);
 
 struct pointer_handler screens_pointer_handler = {
-	.motion = handle_motion,
+    .motion = handle_motion,
 };
 
 EXPORT void
-swc_screen_set_handler(struct swc_screen *base, const struct swc_screen_handler *handler, void *data)
+swc_screen_set_handler(struct swc_screen *base,
+                       const struct swc_screen_handler *handler,
+                       void *data)
 {
 	struct screen *screen = INTERNAL(base);
 
@@ -59,11 +65,13 @@ screens_initialize(void)
 {
 	wl_list_init(&swc.screens);
 
-	if (!drm_create_screens(&swc.screens))
+	if (!drm_create_screens(&swc.screens)) {
 		return false;
+	}
 
-	if (wl_list_empty(&swc.screens))
+	if (wl_list_empty(&swc.screens)) {
 		return false;
+	}
 
 	return true;
 }
@@ -73,8 +81,8 @@ screens_finalize(void)
 {
 	struct screen *screen, *tmp;
 
-	wl_list_for_each_safe (screen, tmp, &swc.screens, link)
-		screen_destroy(screen);
+	wl_list_for_each_safe(screen, tmp, &swc.screens, link)
+	    screen_destroy(screen);
 }
 
 static void
@@ -101,13 +109,15 @@ screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane)
 	int32_t x = 0;
 
 	/* Simple heuristic for initial screen positioning. */
-	wl_list_for_each (screen, &swc.screens, link)
-		x = MAX(x, screen->base.geometry.x + screen->base.geometry.width);
+	wl_list_for_each(screen, &swc.screens, link) x =
+	    MAX(x, screen->base.geometry.x + screen->base.geometry.width);
 
-	if (!(screen = malloc(sizeof(*screen))))
+	if (!(screen = malloc(sizeof(*screen)))) {
 		goto error0;
+	}
 
-	screen->global = wl_global_create(swc.display, &swc_screen_interface, 1, screen, &bind_screen);
+	screen->global = wl_global_create(
+	    swc.display, &swc_screen_interface, 1, screen, &bind_screen);
 
 	if (!screen->global) {
 		ERROR("Failed to create screen global\n");
@@ -116,7 +126,11 @@ screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane)
 
 	screen->crtc = crtc;
 
-	if (!primary_plane_initialize(&screen->planes.primary, crtc, output->preferred_mode, &output->connector, 1)) {
+	if (!primary_plane_initialize(&screen->planes.primary,
+	                              crtc,
+	                              output->preferred_mode,
+	                              &output->connector,
+	                              1)) {
 		ERROR("Failed to initialize primary plane\n");
 		goto error2;
 	}
@@ -152,13 +166,15 @@ screen_destroy(struct screen *screen)
 {
 	struct output *output, *next;
 
-	if (active_screen == screen)
+	if (active_screen == screen) {
 		active_screen = NULL;
-	if (screen->handler->destroy)
+	}
+	if (screen->handler->destroy) {
 		screen->handler->destroy(screen->handler_data);
+	}
 	wl_signal_emit(&screen->destroy_signal, NULL);
-	wl_list_for_each_safe (output, next, &screen->outputs, link)
-		output_destroy(output);
+	wl_list_for_each_safe(output, next, &screen->outputs, link)
+	    output_destroy(output);
 	primary_plane_finalize(&screen->planes.primary);
 	plane_destroy(screen->planes.cursor);
 	free(screen);
@@ -174,44 +190,51 @@ screen_update_usable_geometry(struct screen *screen)
 
 	DEBUG("Updating usable geometry\n");
 
-	pixman_region32_init_rect(&total_usable, geom->x, geom->y, geom->width, geom->height);
+	pixman_region32_init_rect(
+	    &total_usable, geom->x, geom->y, geom->width, geom->height);
 	pixman_region32_init(&usable);
 
-	wl_list_for_each (modifier, &screen->modifiers, link) {
+	wl_list_for_each(modifier, &screen->modifiers, link)
+	{
 		modifier->modify(modifier, geom, &usable);
 		pixman_region32_intersect(&total_usable, &total_usable, &usable);
 	}
 
 	extents = pixman_region32_extents(&total_usable);
 
-	if (extents->x1 != screen->base.usable_geometry.x
-	 || extents->y1 != screen->base.usable_geometry.y
-	 || (extents->x2 - extents->x1) != screen->base.usable_geometry.width
-	 || (extents->y2 - extents->y1) != screen->base.usable_geometry.height)
-	{
+	if (extents->x1 != screen->base.usable_geometry.x ||
+	    extents->y1 != screen->base.usable_geometry.y ||
+	    (extents->x2 - extents->x1) != screen->base.usable_geometry.width ||
+	    (extents->y2 - extents->y1) != screen->base.usable_geometry.height) {
 		screen->base.usable_geometry.x = extents->x1;
 		screen->base.usable_geometry.y = extents->y1;
 		screen->base.usable_geometry.width = extents->x2 - extents->x1;
 		screen->base.usable_geometry.height = extents->y2 - extents->y1;
 
-		if (screen->handler->usable_geometry_changed)
+		if (screen->handler->usable_geometry_changed) {
 			screen->handler->usable_geometry_changed(screen->handler_data);
+		}
 	}
 }
 
 bool
-handle_motion(struct pointer_handler *handler, uint32_t time, wl_fixed_t fx, wl_fixed_t fy)
+handle_motion(struct pointer_handler *handler,
+              uint32_t time,
+              wl_fixed_t fx,
+              wl_fixed_t fy)
 {
 	struct screen *screen;
 	int32_t x = wl_fixed_to_int(fx), y = wl_fixed_to_int(fy);
 
-	wl_list_for_each (screen, &swc.screens, link) {
+	wl_list_for_each(screen, &swc.screens, link)
+	{
 		if (rectangle_contains_point(&screen->base.geometry, x, y)) {
 			if (screen != active_screen) {
 				active_screen = screen;
 
-				if (screen->handler->entered)
+				if (screen->handler->entered) {
 					screen->handler->entered(screen->handler_data);
+				}
 			}
 			break;
 		}

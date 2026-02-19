@@ -1,8 +1,8 @@
 #ifndef SWC_OUTPUT_H
 #define SWC_OUTPUT_H
 
-#include <stdint.h>
 #include <pixman.h>
+#include <stdint.h>
 #include <wayland-util.h>
 #include <xf86drmMode.h>
 
@@ -27,7 +27,9 @@ struct output {
 	struct wl_list link;
 };
 
-struct output *output_new(drmModeConnector *connector);
-void output_destroy(struct output *output);
+struct output *
+output_new(drmModeConnector *connector);
+void
+output_destroy(struct output *output);
 
 #endif

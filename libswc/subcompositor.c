@@ -21,11 +21,11 @@
  * SOFTWARE.
  */
 
-#include "swc.h"
-#include "internal.h"
 #include "subcompositor.h"
+#include "internal.h"
 #include "subsurface.h"
 #include "surface.h"
+#include "swc.h"
 #include "util.h"
 
 static bool
@@ -33,8 +33,9 @@ is_descendant_of(struct surface *ancestor, struct surface *surface)
 {
 	while (surface && surface->subsurface) {
 		surface = surface->subsurface->parent;
-		if (surface == ancestor)
+		if (surface == ancestor) {
 			return true;
+		}
 	}
 
 	return false;
@@ -42,28 +43,33 @@ is_descendant_of(struct surface *ancestor, struct surface *surface)
 
 static void
 get_subsurface(struct wl_client *client, struct wl_resource *resource,
-               uint32_t id, struct wl_resource *surface_resource, struct wl_resource *parent_resource)
+               uint32_t id, struct wl_resource *surface_resource,
+               struct wl_resource *parent_resource)
 {
 	struct subsurface *subsurface;
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 	struct surface *parent = wl_resource_get_user_data(parent_resource);
 
 	if (!surface || !parent) {
-		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE, "invalid surface");
+		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
+		                       "invalid surface");
 		return;
 	}
 
 	if (surface == parent || is_descendant_of(surface, parent)) {
-		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_PARENT, "invalid parent surface");
+		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_PARENT,
+		                       "invalid parent surface");
 		return;
 	}
 
 	if (surface->subsurface) {
-		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE, "surface already has a subsurface role");
+		wl_resource_post_error(resource, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
+		                       "surface already has a subsurface role");
 		return;
 	}
 
-	subsurface = subsurface_new(client, wl_resource_get_version(resource), id, surface, parent);
+	subsurface = subsurface_new(client, wl_resource_get_version(resource), id,
+	                            surface, parent);
 
 	if (!subsurface) {
 		wl_resource_post_no_memory(resource);
@@ -73,16 +79,18 @@ get_subsurface(struct wl_client *client, struct wl_resource *resource,
 }
 
 static const struct wl_subcompositor_interface subcompositor_impl = {
-	.destroy = destroy_resource,
-	.get_subsurface = get_subsurface,
+    .destroy = destroy_resource,
+    .get_subsurface = get_subsurface,
 };
 
 static void
-bind_subcompositor(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+bind_subcompositor(struct wl_client *client, void *data, uint32_t version,
+                   uint32_t id)
 {
 	struct wl_resource *resource;
 
-	resource = wl_resource_create(client, &wl_subcompositor_interface, version, id);
+	resource =
+	    wl_resource_create(client, &wl_subcompositor_interface, version, id);
 	if (!resource) {
 		wl_client_post_no_memory(client);
 		return;
@@ -93,5 +101,6 @@ bind_subcompositor(struct wl_client *client, void *data, uint32_t version, uint3
 struct wl_global *
 subcompositor_create(struct wl_display *display)
 {
-	return wl_global_create(display, &wl_subcompositor_interface, 1, NULL, &bind_subcompositor);
+	return wl_global_create(display, &wl_subcompositor_interface, 1, NULL,
+	                        &bind_subcompositor);
 }

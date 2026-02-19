@@ -39,8 +39,8 @@ struct window {
 	struct wl_list link;
 };
 
-static const char *terminal_command[] = { "st-wl", NULL };
-static const char *dmenu_command[] = { "dmenu_run-wl", NULL };
+static const char *terminal_command[] = {"st-wl", NULL};
+static const char *dmenu_command[] = {"dmenu_run-wl", NULL};
 static const uint32_t border_width = 1;
 static const uint32_t border_color_active = 0xff333388;
 static const uint32_t border_color_normal = 0xff888888;
@@ -60,27 +60,29 @@ arrange(struct screen *screen)
 	struct swc_rectangle geometry;
 	struct swc_rectangle *screen_geometry = &screen->swc->usable_geometry;
 
-	if (screen->num_windows == 0)
+	if (screen->num_windows == 0) {
 		return;
+	}
 
 	num_columns = ceil(sqrt(screen->num_windows));
 	num_rows = screen->num_windows / num_columns + 1;
 	window = wl_container_of(screen->windows.next, window, link);
 
 	for (column_index = 0; &window->link != &screen->windows; ++column_index) {
-		geometry.x = screen_geometry->x + border_width
-		             + screen_geometry->width * column_index / num_columns;
-		geometry.width = screen_geometry->width / num_columns
-		                 - 2 * border_width;
+		geometry.x = screen_geometry->x + border_width +
+		             screen_geometry->width * column_index / num_columns;
+		geometry.width =
+		    screen_geometry->width / num_columns - 2 * border_width;
 
-		if (column_index == screen->num_windows % num_columns)
+		if (column_index == screen->num_windows % num_columns) {
 			--num_rows;
+		}
 
 		for (row_index = 0; row_index < num_rows; ++row_index) {
-			geometry.y = screen_geometry->y + border_width
-			             + screen_geometry->height * row_index / num_rows;
-			geometry.height = screen_geometry->height / num_rows
-			                  - 2 * border_width;
+			geometry.y = screen_geometry->y + border_width +
+			             screen_geometry->height * row_index / num_rows;
+			geometry.height =
+			    screen_geometry->height / num_rows - 2 * border_width;
 
 			swc_window_set_geometry(window->swc, &geometry);
 			window = wl_container_of(window->link.next, window, link);
@@ -112,15 +114,16 @@ static void
 focus(struct window *window)
 {
 	if (focused_window) {
-		swc_window_set_border(focused_window->swc,
-		                      border_color_normal, border_width);
+		swc_window_set_border(focused_window->swc, border_color_normal,
+		                      border_width);
 	}
 
 	if (window) {
 		swc_window_set_border(window->swc, border_color_active, border_width);
 		swc_window_focus(window->swc);
-	} else
+	} else {
 		swc_window_focus(NULL);
+	}
 
 	focused_window = window;
 }
@@ -145,8 +148,8 @@ screen_entered(void *data)
 }
 
 static const struct swc_screen_handler screen_handler = {
-	.usable_geometry_changed = &screen_usable_geometry_changed,
-	.entered = &screen_entered,
+    .usable_geometry_changed = &screen_usable_geometry_changed,
+    .entered = &screen_entered,
 };
 
 static void
@@ -159,11 +162,11 @@ window_destroy(void *data)
 		next_focus = wl_container_of(window->link.next, window, link);
 
 		if (&next_focus->link == &window->screen->windows) {
-			next_focus = wl_container_of(window->link.prev,
-			                             window, link);
+			next_focus = wl_container_of(window->link.prev, window, link);
 
-			if (&next_focus->link == &window->screen->windows)
+			if (&next_focus->link == &window->screen->windows) {
 				next_focus = NULL;
+			}
 		}
 
 		focus(next_focus);
@@ -182,8 +185,8 @@ window_entered(void *data)
 }
 
 static const struct swc_window_handler window_handler = {
-	.destroy = &window_destroy,
-	.entered = &window_entered,
+    .destroy = &window_destroy,
+    .entered = &window_entered,
 };
 
 static void
@@ -193,8 +196,9 @@ new_screen(struct swc_screen *swc)
 
 	screen = malloc(sizeof(*screen));
 
-	if (!screen)
+	if (!screen) {
 		return;
+	}
 
 	screen->swc = swc;
 	screen->num_windows = 0;
@@ -210,8 +214,9 @@ new_window(struct swc_window *swc)
 
 	window = malloc(sizeof(*window));
 
-	if (!window)
+	if (!window) {
 		return;
+	}
 
 	window->swc = swc;
 	window->screen = NULL;
@@ -221,15 +226,16 @@ new_window(struct swc_window *swc)
 	focus(window);
 }
 
-const struct swc_manager manager = { &new_screen, &new_window };
+const struct swc_manager manager = {&new_screen, &new_window};
 
 static void
 spawn(void *data, uint32_t time, uint32_t value, uint32_t state)
 {
 	char *const *command = data;
 
-	if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
+	if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		return;
+	}
 
 	if (fork() == 0) {
 		execvp(command[0], command);
@@ -240,8 +246,9 @@ spawn(void *data, uint32_t time, uint32_t value, uint32_t state)
 static void
 quit(void *data, uint32_t time, uint32_t value, uint32_t state)
 {
-	if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
+	if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		return;
+	}
 
 	wl_display_terminate(display);
 }
@@ -252,23 +259,25 @@ main(int argc, char *argv[])
 	const char *socket;
 
 	display = wl_display_create();
-	if (!display)
+	if (!display) {
 		return EXIT_FAILURE;
+	}
 
 	socket = wl_display_add_socket_auto(display);
-	if (!socket)
+	if (!socket) {
 		return EXIT_FAILURE;
+	}
 	setenv("WAYLAND_DISPLAY", socket, 1);
 
-	if (!swc_initialize(display, NULL, &manager))
+	if (!swc_initialize(display, NULL, &manager)) {
 		return EXIT_FAILURE;
+	}
 
-	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_Return,
-	                &spawn, terminal_command);
-	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_r,
-	                &spawn, dmenu_command);
-	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_q,
-	                &quit, NULL);
+	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_Return, &spawn,
+	                terminal_command);
+	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_r, &spawn,
+	                dmenu_command);
+	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_q, &quit, NULL);
 
 	event_loop = wl_display_get_event_loop(display);
 	wl_display_run(display);

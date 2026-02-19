@@ -22,9 +22,6 @@
  * SOFTWARE.
  */
 
-#include "wscons/atKeynames.h"
-#include "wscons/bsd_KbdMap.h"
-#include "seat.h"
 #include "compositor.h"
 #include "data_device.h"
 #include "event.h"
@@ -33,15 +30,18 @@
 #include "launch.h"
 #include "pointer.h"
 #include "screen.h"
+#include "seat.h"
 #include "surface.h"
 #include "util.h"
+#include "wscons/atKeynames.h"
+#include "wscons/bsd_KbdMap.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <dev/wscons/wsconsio.h>
@@ -51,35 +51,21 @@
 /* Map wscons encodings to libxkbcommon layout names. */
 struct ws_xkb_map {
 	const int ws;
-	const char * const xkb;
+	const char *const xkb;
 };
 
 static const struct ws_xkb_map ws_xkb_encodings[] = {
-	{ KB_UK, "gb" },
-	{ KB_BE, "be" },
+    {KB_UK, "gb"}, {KB_BE, "be"},
 #ifdef KB_CZ
-	{ KB_CZ, "cz" },
+    {KB_CZ, "cz"},
 #endif
-	{ KB_DK, "dk" },
-	{ KB_NL, "nl" },
-	{ KB_DE, "de" },
+    {KB_DK, "dk"}, {KB_NL, "nl"}, {KB_DE, "de"},
 #ifdef KB_GR
-	{ KB_GR, "gr" },
+    {KB_GR, "gr"},
 #endif
-	{ KB_HU, "hu" },
-	{ KB_IT, "it" },
-	{ KB_JP, "jp" },
-	{ KB_NO, "no" },
-	{ KB_PL, "pl" },
-	{ KB_PT, "pt" },
-	{ KB_RU, "ru" },
-	{ KB_ES, "es" },
-	{ KB_SV, "sv" },
-	{ KB_SG, "sg" },
-	{ KB_TR, "tr" },
-	{ KB_UA, "ua" },
-	{ -1, NULL }
-};
+    {KB_HU, "hu"}, {KB_IT, "it"}, {KB_JP, "jp"}, {KB_NO, "no"}, {KB_PL, "pl"},
+    {KB_PT, "pt"}, {KB_RU, "ru"}, {KB_ES, "es"}, {KB_SV, "sv"}, {KB_SG, "sg"},
+    {KB_TR, "tr"}, {KB_UA, "ua"}, {-1, NULL}};
 
 struct seat {
 	struct swc_seat base;
@@ -111,15 +97,18 @@ struct seat {
 static void
 handle_keyboard_focus_event(struct wl_listener *listener, void *data)
 {
-	struct seat *seat = wl_container_of(listener, seat, keyboard_focus_listener);
+	struct seat *seat =
+	    wl_container_of(listener, seat, keyboard_focus_listener);
 	struct event *ev = data;
 	struct input_focus_event_data *event_data = ev->data;
 
-	if (ev->type != INPUT_FOCUS_EVENT_CHANGED)
+	if (ev->type != INPUT_FOCUS_EVENT_CHANGED) {
 		return;
+	}
 
 	if (event_data->new) {
-		struct wl_client *client = wl_resource_get_client(event_data->new->surface->resource);
+		struct wl_client *client =
+		    wl_resource_get_client(event_data->new->surface->resource);
 
 		/* Offer the selection to the new focus. */
 		data_device_offer_selection(seat->base.data_device, client);
@@ -132,11 +121,14 @@ handle_data_device_event(struct wl_listener *listener, void *data)
 	struct seat *seat = wl_container_of(listener, seat, data_device_listener);
 	struct event *ev = data;
 
-	if (ev->type != DATA_DEVICE_EVENT_SELECTION_CHANGED)
+	if (ev->type != DATA_DEVICE_EVENT_SELECTION_CHANGED) {
 		return;
+	}
 
-	if (seat->base.keyboard->focus.client)
-		data_device_offer_selection(seat->base.data_device, seat->base.keyboard->focus.client);
+	if (seat->base.keyboard->focus.client) {
+		data_device_offer_selection(seat->base.data_device,
+		                            seat->base.keyboard->focus.client);
+	}
 }
 
 static void
@@ -166,11 +158,13 @@ get_pointer(struct wl_client *client, struct wl_resource *resource, uint32_t id)
 }
 
 static void
-get_keyboard(struct wl_client *client, struct wl_resource *resource, uint32_t id)
+get_keyboard(struct wl_client *client, struct wl_resource *resource,
+             uint32_t id)
 {
 	struct seat *seat = wl_resource_get_user_data(resource);
 
-	keyboard_bind(seat->base.keyboard, client, wl_resource_get_version(resource), id);
+	keyboard_bind(seat->base.keyboard, client,
+	              wl_resource_get_version(resource), id);
 }
 
 static void
@@ -180,9 +174,9 @@ get_touch(struct wl_client *client, struct wl_resource *resource, uint32_t id)
 }
 
 static struct wl_seat_interface seat_impl = {
-	.get_pointer = get_pointer,
-	.get_keyboard = get_keyboard,
-	.get_touch = get_touch,
+    .get_pointer = get_pointer,
+    .get_keyboard = get_keyboard,
+    .get_touch = get_touch,
 };
 
 static void
@@ -191,15 +185,18 @@ bind_seat(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	struct seat *seat = data;
 	struct wl_resource *resource;
 
-	if (version > 4)
+	if (version > 4) {
 		version = 4;
+	}
 
 	resource = wl_resource_create(client, &wl_seat_interface, version, id);
-	wl_resource_set_implementation(resource, &seat_impl, seat, &remove_resource);
+	wl_resource_set_implementation(resource, &seat_impl, seat,
+	                               &remove_resource);
 	wl_list_insert(&seat->resources, wl_resource_get_link(resource));
 
-	if (version >= 2)
+	if (version >= 2) {
 		wl_seat_send_name(resource, seat->name);
+	}
 
 	wl_seat_send_capabilities(resource, seat->capabilities);
 }
@@ -321,11 +318,13 @@ initialize_wscons(struct seat *seat)
 	int kbd_ver = WSKBDIO_EVENT_VERSION;
 #endif
 
-	if ((seat->mouse_fd = launch_open_device("/dev/wsmouse", O_RDWR | O_NONBLOCK)) == -1) {
+	if ((seat->mouse_fd =
+	         launch_open_device("/dev/wsmouse", O_RDWR | O_NONBLOCK)) == -1) {
 		ERROR("Could not open mouse device\n");
 		goto error0;
 	}
-	if ((seat->kbd_fd = launch_open_device("/dev/wskbd", O_RDWR | O_NONBLOCK)) == -1) {
+	if ((seat->kbd_fd =
+	         launch_open_device("/dev/wskbd", O_RDWR | O_NONBLOCK)) == -1) {
 		ERROR("Could not open keyboard device\n");
 		goto error1;
 	}
@@ -340,16 +339,20 @@ initialize_wscons(struct seat *seat)
 	/* set devices to nativemode to receive events */
 #ifdef WSMOUSEIO_SETMODE
 	{
-		int mode = WSMOUSE_COMPAT;  /* use compat mode; it sends events */
-		if (ioctl(seat->mouse_fd, WSMOUSEIO_SETMODE, &mode) == -1)
-			fprintf(stderr, "wscons: WSMOUSEIO_SETMODE failed: %s\n", strerror(errno));
+		int mode = WSMOUSE_COMPAT; /* use compat mode; it sends events */
+		if (ioctl(seat->mouse_fd, WSMOUSEIO_SETMODE, &mode) == -1) {
+			fprintf(stderr, "wscons: WSMOUSEIO_SETMODE failed: %s\n",
+			        strerror(errno));
+		}
 	}
 #endif /* WSMOUSEIO_SETMODE */
 #ifdef WSKBDIO_SETMODE
 	{
-		int mode = WSKBD_TRANSLATED;  /* use translated mode for key events */
-		if (ioctl(seat->kbd_fd, WSKBDIO_SETMODE, &mode) == -1)
-			fprintf(stderr, "wscons: WSKBDIO_SETMODE failed: %s\n", strerror(errno));
+		int mode = WSKBD_TRANSLATED; /* use translated mode for key events */
+		if (ioctl(seat->kbd_fd, WSKBDIO_SETMODE, &mode) == -1) {
+			fprintf(stderr, "wscons: WSKBDIO_SETMODE failed: %s\n",
+			        strerror(errno));
+		}
 	}
 #endif /* WSKBDIO_SETMODE */
 
@@ -397,8 +400,9 @@ seat_create(struct wl_display *display, const char *seat_name)
 	struct seat *seat;
 
 	seat = malloc(sizeof(*seat));
-	if (!seat)
+	if (!seat) {
 		goto error0;
+	}
 
 	seat->ignore = false;
 	memset(&seat->names, 0, sizeof(seat->names));
@@ -413,13 +417,17 @@ seat_create(struct wl_display *display, const char *seat_name)
 		goto error1;
 	}
 
-	if (!initialize_wscons(seat))
+	if (!initialize_wscons(seat)) {
 		goto error2;
+	}
 
-	seat->global = wl_global_create(display, &wl_seat_interface, 4, seat, &bind_seat);
-	if (!seat->global)
+	seat->global =
+	    wl_global_create(display, &wl_seat_interface, 4, seat, &bind_seat);
+	if (!seat->global) {
 		goto error2;
-	seat->capabilities = WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER;
+	}
+	seat->capabilities =
+	    WL_SEAT_CAPABILITY_KEYBOARD | WL_SEAT_CAPABILITY_POINTER;
 	wl_list_init(&seat->resources);
 
 	seat->swc_listener.notify = &handle_swc_event;
@@ -431,7 +439,8 @@ seat_create(struct wl_display *display, const char *seat_name)
 		goto error3;
 	}
 	seat->data_device_listener.notify = &handle_data_device_event;
-	wl_signal_add(&seat->base.data_device->event_signal, &seat->data_device_listener);
+	wl_signal_add(&seat->base.data_device->event_signal,
+	              &seat->data_device_listener);
 
 	seat->base.keyboard = keyboard_create(&seat->names);
 	if (!seat->base.keyboard) {
@@ -439,7 +448,8 @@ seat_create(struct wl_display *display, const char *seat_name)
 		goto error4;
 	}
 	seat->keyboard_focus_listener.notify = handle_keyboard_focus_event;
-	wl_signal_add(&seat->base.keyboard->focus.event_signal, &seat->keyboard_focus_listener);
+	wl_signal_add(&seat->base.keyboard->focus.event_signal,
+	              &seat->keyboard_focus_listener);
 
 	if (!pointer_initialize(&seat->pointer)) {
 		ERROR("Could not initialize pointer\n");
@@ -447,12 +457,11 @@ seat_create(struct wl_display *display, const char *seat_name)
 	}
 	seat->base.pointer = &seat->pointer;
 
-	seat->kbd_source = wl_event_loop_add_fd
-		(swc.event_loop, seat->kbd_fd, WL_EVENT_READABLE,
-		 &handle_ws_data, seat);
-	seat->mouse_source = wl_event_loop_add_fd
-		(swc.event_loop, seat->mouse_fd, WL_EVENT_READABLE,
-		 &handle_ws_data, seat);
+	seat->kbd_source = wl_event_loop_add_fd(
+	    swc.event_loop, seat->kbd_fd, WL_EVENT_READABLE, &handle_ws_data, seat);
+	seat->mouse_source =
+	    wl_event_loop_add_fd(swc.event_loop, seat->mouse_fd, WL_EVENT_READABLE,
+	                         &handle_ws_data, seat);
 
 	return &seat->base;
 

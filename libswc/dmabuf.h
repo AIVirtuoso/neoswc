@@ -26,6 +26,7 @@
 
 struct wl_display;
 
-struct wl_global *swc_dmabuf_create(struct wl_display *display);
+struct wl_global *
+swc_dmabuf_create(struct wl_display *display);
 
 #endif

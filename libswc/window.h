@@ -24,8 +24,8 @@
 #ifndef SWC_WINDOW_H
 #define SWC_WINDOW_H
 
-#include "swc.h"
 #include "pointer.h"
+#include "swc.h"
 
 #include <stdint.h>
 #include <wayland-server.h>
@@ -52,7 +52,7 @@ struct window {
 	struct view_handler view_handler;
 	bool managed;
 	unsigned mode;
-	
+
 	struct {
 		struct swc_rectangle geom;
 		unsigned mode;
@@ -95,14 +95,25 @@ struct window_impl {
 
 extern struct wl_listener window_enter_listener;
 
-bool window_initialize(struct window *window, const struct window_impl *impl, struct surface *surface);
-void window_finalize(struct window *window);
-void window_manage(struct window *window);
-void window_unmanage(struct window *window);
-void window_set_title(struct window *window, const char *title, size_t length);
-void window_set_app_id(struct window *window, const char *app_id);
-void window_set_parent(struct window *window, struct window *parent);
-void window_begin_move(struct window *window, struct button *button);
-void window_begin_resize(struct window *window, uint32_t edges, struct button *button);
+bool
+window_initialize(struct window *window, const struct window_impl *impl,
+                  struct surface *surface);
+void
+window_finalize(struct window *window);
+void
+window_manage(struct window *window);
+void
+window_unmanage(struct window *window);
+void
+window_set_title(struct window *window, const char *title, size_t length);
+void
+window_set_app_id(struct window *window, const char *app_id);
+void
+window_set_parent(struct window *window, struct window *parent);
+void
+window_begin_move(struct window *window, struct button *button);
+void
+window_begin_resize(struct window *window, uint32_t edges,
+                    struct button *button);
 
 #endif

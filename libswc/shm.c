@@ -65,8 +65,9 @@ swc_mremap(struct pool *pool, void *oldp, size_t oldsize, size_t newsize)
 	void *newp;
 
 	newp = mmap(NULL, newsize, PROT_READ, MAP_SHARED, pool->fd, 0);
-	if (newp == MAP_FAILED)
+	if (newp == MAP_FAILED) {
 		return MAP_FAILED;
+	}
 
 	(void)munmap(oldp, oldsize);
 	return newp;
@@ -76,8 +77,9 @@ swc_mremap(struct pool *pool, void *oldp, size_t oldsize, size_t newsize)
 static void
 unref_pool(struct pool *pool)
 {
-	if (--pool->references > 0)
+	if (--pool->references > 0) {
 		return;
+	}
 
 	munmap(pool->data, pool->size);
 	close(pool->fd);
@@ -94,7 +96,8 @@ destroy_pool_resource(struct wl_resource *resource)
 static void
 handle_buffer_destroy(struct wld_destructor *destructor)
 {
-	struct pool_reference *reference = wl_container_of(destructor, reference, destructor);
+	struct pool_reference *reference =
+	    wl_container_of(destructor, reference, destructor);
 	unref_pool(reference->pool);
 }
 
@@ -113,7 +116,8 @@ format_shm_to_wld(uint32_t format)
 
 static void
 create_buffer(struct wl_client *client, struct wl_resource *resource,
-              uint32_t id, int32_t offset, int32_t width, int32_t height, int32_t stride, uint32_t format)
+              uint32_t id, int32_t offset, int32_t width, int32_t height,
+              int32_t stride, uint32_t format)
 {
 	struct pool *pool = wl_resource_get_user_data(resource);
 	struct pool_reference *reference;
@@ -122,23 +126,30 @@ create_buffer(struct wl_client *client, struct wl_resource *resource,
 	union wld_object object;
 
 	if (offset > pool->size || offset < 0) {
-		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_STRIDE, "offset is too big or negative");
+		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_STRIDE,
+		                       "offset is too big or negative");
 		return;
 	}
 
 	object.ptr = (void *)((uintptr_t)pool->data + offset);
-	buffer = wld_import_buffer(pool->shm->context, WLD_OBJECT_DATA, object, width, height, format_shm_to_wld(format), stride);
+	buffer =
+	    wld_import_buffer(pool->shm->context, WLD_OBJECT_DATA, object, width,
+	                      height, format_shm_to_wld(format), stride);
 
-	if (!buffer)
+	if (!buffer) {
 		goto error0;
+	}
 
-	buffer_resource = wayland_buffer_create_resource(client, wl_resource_get_version(resource), id, buffer);
+	buffer_resource = wayland_buffer_create_resource(
+	    client, wl_resource_get_version(resource), id, buffer);
 
-	if (!buffer_resource)
+	if (!buffer_resource) {
 		goto error1;
+	}
 
-	if (!(reference = malloc(sizeof(*reference))))
+	if (!(reference = malloc(sizeof(*reference)))) {
 		goto error2;
+	}
 
 	reference->pool = pool;
 	reference->destructor.destroy = &handle_buffer_destroy;
@@ -163,17 +174,20 @@ resize(struct wl_client *client, struct wl_resource *resource, int32_t size)
 	struct stat st;
 
 	if (fstat(pool->fd, &st) != 0) {
-		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "fstat failed: %s", strerror(errno));
+		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD,
+		                       "fstat failed: %s", strerror(errno));
 		return;
 	}
 	if (st.st_size < size) {
 		if (ftruncate(pool->fd, size) != 0) {
 			int saved = errno;
 			/* some clients seal memfd  if size is already fine, allo */
-			if ((saved == EPERM || saved == EACCES) && fstat(pool->fd, &st) == 0 && st.st_size >= size) {
+			if ((saved == EPERM || saved == EACCES) &&
+			    fstat(pool->fd, &st) == 0 && st.st_size >= size) {
 				goto remap;
 			}
-			wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "ftruncate failed: %s", strerror(saved));
+			wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD,
+			                       "ftruncate failed: %s", strerror(saved));
 			return;
 		}
 	}
@@ -181,7 +195,8 @@ resize(struct wl_client *client, struct wl_resource *resource, int32_t size)
 remap:
 	data = swc_mremap(pool, pool->data, pool->size, size);
 	if (data == MAP_FAILED) {
-		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "mremap failed: %s", strerror(errno));
+		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD,
+		                       "mremap failed: %s", strerror(errno));
 		return;
 	}
 	pool->data = data;
@@ -189,13 +204,14 @@ remap:
 }
 
 static const struct wl_shm_pool_interface shm_pool_impl = {
-	.create_buffer = create_buffer,
-	.destroy = destroy_resource,
-	.resize = resize,
+    .create_buffer = create_buffer,
+    .destroy = destroy_resource,
+    .resize = resize,
 };
 
 static void
-create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id, int32_t fd, int32_t size)
+create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id,
+            int32_t fd, int32_t size)
 {
 	struct swc_shm *shm = wl_resource_get_user_data(resource);
 	struct pool *pool;
@@ -206,15 +222,18 @@ create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id,
 		goto error0;
 	}
 	pool->shm = shm;
-	pool->resource = wl_resource_create(client, &wl_shm_pool_interface, wl_resource_get_version(resource), id);
+	pool->resource = wl_resource_create(client, &wl_shm_pool_interface,
+	                                    wl_resource_get_version(resource), id);
 	if (!pool->resource) {
 		wl_resource_post_no_memory(resource);
 		goto error1;
 	}
-	wl_resource_set_implementation(pool->resource, &shm_pool_impl, pool, &destroy_pool_resource);
+	wl_resource_set_implementation(pool->resource, &shm_pool_impl, pool,
+	                               &destroy_pool_resource);
 	pool->data = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
 	if (pool->data == MAP_FAILED) {
-		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD, "mmap failed: %s", strerror(errno));
+		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD,
+		                       "mmap failed: %s", strerror(errno));
 		goto error2;
 	}
 	/* close(fd); */
@@ -231,9 +250,7 @@ error0:
 	close(fd);
 }
 
-static const struct wl_shm_interface shm_impl = {
-	.create_pool = &create_pool
-};
+static const struct wl_shm_interface shm_impl = {.create_pool = &create_pool};
 
 static void
 bind_shm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
@@ -258,17 +275,22 @@ shm_create(struct wl_display *display)
 	struct swc_shm *shm;
 
 	shm = malloc(sizeof(*shm));
-	if (!shm)
+	if (!shm) {
 		goto error0;
+	}
 	shm->context = wld_pixman_create_context();
-	if (!shm->context)
+	if (!shm->context) {
 		goto error1;
+	}
 	shm->renderer = wld_create_renderer(shm->context);
-	if (!shm->renderer)
+	if (!shm->renderer) {
 		goto error2;
-	shm->global = wl_global_create(display, &wl_shm_interface, 1, shm, &bind_shm);
-	if (!shm->global)
+	}
+	shm->global =
+	    wl_global_create(display, &wl_shm_interface, 1, shm, &bind_shm);
+	if (!shm->global) {
 		goto error3;
+	}
 
 	return shm;
 

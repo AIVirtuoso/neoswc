@@ -22,16 +22,16 @@
  */
 
 #include "plane.h"
-#include "event.h"
 #include "drm.h"
+#include "event.h"
 #include "internal.h"
 #include "screen.h"
 #include "util.h"
 
 #include <errno.h>
 #include <stdlib.h>
-#include <wld/wld.h>
 #include <wld/drm.h>
+#include <wld/wld.h>
 #include <xf86drmMode.h>
 
 enum plane_property {
@@ -54,13 +54,16 @@ update(struct view *view)
 	struct plane *plane = wl_container_of(view, plane, view);
 	uint32_t x, y, w, h;
 
-	if (!plane->screen)
+	if (!plane->screen) {
 		return false;
+	}
 	x = view->geometry.x - plane->screen->base.geometry.x;
 	y = view->geometry.y - plane->screen->base.geometry.y;
 	w = view->geometry.width;
 	h = view->geometry.height;
-	if (swc.active && drmModeSetPlane(swc.drm->fd, plane->id, plane->screen->crtc, plane->fb, 0, x, y, w, h, 0, 0, w << 16, h << 16) < 0) {
+	if (swc.active &&
+	    drmModeSetPlane(swc.drm->fd, plane->id, plane->screen->crtc, plane->fb,
+	                    0, x, y, w, h, 0, 0, w << 16, h << 16) < 0) {
 		ERROR("Could not set cursor: %s\n", strerror(errno));
 		return false;
 	}
@@ -86,32 +89,28 @@ move(struct view *view, int32_t x, int32_t y)
 }
 
 static const struct view_impl view_impl = {
-	.update = update,
-	.attach = attach,
-	.move = move,
+    .update = update,
+    .attach = attach,
+    .move = move,
 };
 
 static enum plane_property
 find_prop(const char *name)
 {
 	static const char property_names[][16] = {
-		[PLANE_TYPE]        = "type",
-		[PLANE_IN_FENCE_FD] = "IN_FENCE_FD",
-		[PLANE_CRTC_ID]     = "CRTC_ID",
-		[PLANE_CRTC_X]      = "CRTC_X",
-		[PLANE_CRTC_Y]      = "CRTC_Y",
-		[PLANE_CRTC_W]      = "CRTC_W",
-		[PLANE_CRTC_H]      = "CRTC_H",
-		[PLANE_SRC_X]       = "SRC_X",
-		[PLANE_SRC_Y]       = "SRC_Y",
-		[PLANE_SRC_W]       = "SRC_W",
-		[PLANE_SRC_H]       = "SRC_H",
+	    [PLANE_TYPE] = "type",       [PLANE_IN_FENCE_FD] = "IN_FENCE_FD",
+	    [PLANE_CRTC_ID] = "CRTC_ID", [PLANE_CRTC_X] = "CRTC_X",
+	    [PLANE_CRTC_Y] = "CRTC_Y",   [PLANE_CRTC_W] = "CRTC_W",
+	    [PLANE_CRTC_H] = "CRTC_H",   [PLANE_SRC_X] = "SRC_X",
+	    [PLANE_SRC_Y] = "SRC_Y",     [PLANE_SRC_W] = "SRC_W",
+	    [PLANE_SRC_H] = "SRC_H",
 	};
 	size_t i;
 
 	for (i = 0; i < ARRAY_LENGTH(property_names); ++i) {
-		if (strcmp(name, property_names[i]) == 0)
+		if (strcmp(name, property_names[i]) == 0) {
 			return i;
+		}
 	}
 	return -1;
 }
@@ -139,11 +138,13 @@ plane_new(uint32_t id)
 	drmModePlane *drm_plane;
 
 	plane = malloc(sizeof(*plane));
-	if (!plane)
+	if (!plane) {
 		goto error0;
+	}
 	drm_plane = drmModeGetPlane(swc.drm->fd, id);
-	if (!drm_plane)
+	if (!drm_plane) {
 		goto error1;
+	}
 	plane->id = id;
 	plane->fb = 0;
 	plane->screen = NULL;
@@ -153,8 +154,9 @@ plane_new(uint32_t id)
 	props = drmModeObjectGetProperties(swc.drm->fd, id, DRM_MODE_OBJECT_PLANE);
 	for (i = 0; i < props->count_props; ++i, drmModeFreeProperty(prop)) {
 		prop = drmModeGetProperty(swc.drm->fd, props->props[i]);
-		if (prop && find_prop(prop->name) == PLANE_TYPE)
+		if (prop && find_prop(prop->name) == PLANE_TYPE) {
 			plane->type = props->prop_values[i];
+		}
 	}
 	plane->swc_listener.notify = &handle_swc_event;
 	wl_signal_add(&swc.event_signal, &plane->swc_listener);

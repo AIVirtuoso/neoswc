@@ -25,13 +25,14 @@
  * SOFTWARE.
  */
 
-#include "protocol.h"
 #include "devmajor.h"
+#include "protocol.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
+#include <signal.h>
 #include <spawn.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -39,13 +40,12 @@
 #include <stdnoreturn.h>
 #include <string.h>
 #include <unistd.h>
-#include <signal.h>
 
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/ioctl.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #ifdef __linux__
 #include <sys/sysmacros.h>
 #endif
@@ -69,8 +69,10 @@
 
 #define ARRAY_LENGTH(array) (sizeof(array) / sizeof(array)[0])
 
-static void activate(void);
-static void deactivate(void);
+static void
+activate(void);
+static void
+deactivate(void);
 
 static bool nflag;
 static int sigfd[2], sock[2];
@@ -86,9 +88,11 @@ static struct {
 	long console_mode;
 } original_vt_state;
 
-static void cleanup(void);
+static void
+cleanup(void);
 
-static noreturn void usage(const char *name)
+static noreturn void
+usage(const char *name)
 {
 	fprintf(stderr, "usage: %s [-n] [-t tty] [--] server [args...]\n", name);
 	exit(2);
@@ -103,8 +107,9 @@ die(const char *format, ...)
 	vfprintf(stderr, format, args);
 	va_end(args);
 
-	if (format[0] && format[strlen(format) - 1] == ':')
+	if (format[0] && format[strlen(format) - 1] == ':') {
 		fprintf(stderr, " %s", strerror(errno));
+	}
 	fputc('\n', stderr);
 
 	cleanup();
@@ -117,8 +122,9 @@ start_devices(void)
 	int i;
 
 	for (i = 0; i < num_drm_fds; ++i) {
-		if (drmSetMaster(drm_fds[i]) < 0)
+		if (drmSetMaster(drm_fds[i]) < 0) {
 			die("failed to set DRM master");
+		}
 	}
 }
 
@@ -128,13 +134,16 @@ stop_devices(bool fatal)
 	int i;
 
 	for (i = 0; i < num_drm_fds; ++i) {
-		if (drmDropMaster(drm_fds[i]) < 0 && fatal)
+		if (drmDropMaster(drm_fds[i]) < 0 && fatal) {
 			die("drmDropMaster:");
+		}
 	}
 	for (i = 0; i < num_input_fds; ++i) {
 #ifdef EVIOCREVOKE
-		if (ioctl(input_fds[i], EVIOCREVOKE, 0) < 0 && errno != ENODEV && fatal)
+		if (ioctl(input_fds[i], EVIOCREVOKE, 0) < 0 && errno != ENODEV &&
+		    fatal) {
 			die("ioctl EVIOCREVOKE:");
+		}
 #endif
 		close(input_fds[i]);
 	}
@@ -148,11 +157,12 @@ cleanup(void)
 	struct vt_mode mode = {.mode = VT_AUTO};
 #endif
 
-	if (!original_vt_state.altered)
+	if (!original_vt_state.altered) {
 		return;
+	}
 
-	/* Stop devices before switching the VT to make sure we have released the DRM
-	 * device before the next session tries to claim it. */
+	/* Stop devices before switching the VT to make sure we have released the
+	 * DRM device before the next session tries to claim it. */
 	stop_devices(false);
 
 	/* Cleanup VT */
@@ -202,19 +212,20 @@ handle_socket_data(int socket)
 	struct swc_launch_event response;
 	char path[PATH_MAX];
 	struct iovec request_iov[2] = {
-		{.iov_base = &request, .iov_len = sizeof(request)},
-		{.iov_base = path, .iov_len = sizeof(path)},
+	    {.iov_base = &request, .iov_len = sizeof(request)},
+	    {.iov_base = path, .iov_len = sizeof(path)},
 	};
 	struct iovec response_iov[1] = {
-		{.iov_base = &response, .iov_len = sizeof(response)},
+	    {.iov_base = &response, .iov_len = sizeof(response)},
 	};
 	int fd = -1;
 	struct stat st;
 	ssize_t size;
 
 	size = receive_fd(socket, &fd, request_iov, 2);
-	if (size == -1 || size == 0 || size < sizeof(request))
+	if (size == -1 || size == 0 || size < sizeof(request)) {
 		return;
+	}
 	size -= sizeof(request);
 
 	response.type = SWC_LAUNCH_EVENT_RESPONSE;
@@ -226,7 +237,8 @@ handle_socket_data(int socket)
 			fprintf(stderr, "path is not NULL terminated\n");
 			goto fail;
 		}
-		if ((request.flags & (O_ACCMODE|O_NONBLOCK|O_CLOEXEC)) != request.flags) {
+		if ((request.flags & (O_ACCMODE | O_NONBLOCK | O_CLOEXEC)) !=
+		    request.flags) {
 			fprintf(stderr, "invalid open flags\n");
 			goto fail;
 		}
@@ -242,8 +254,9 @@ handle_socket_data(int socket)
 		}
 
 		if (device_is_input(st.st_rdev)) {
-			if (!active)
+			if (!active) {
 				goto fail;
+			}
 			if (num_input_fds == ARRAY_LENGTH(input_fds)) {
 				fprintf(stderr, "too many input devices opened\n");
 				goto fail;
@@ -261,11 +274,14 @@ handle_socket_data(int socket)
 		}
 		break;
 	case SWC_LAUNCH_REQUEST_ACTIVATE_VT:
-		if (!active)
+		if (!active) {
 			goto fail;
+		}
 
-		if (ioctl(tty_fd, VT_ACTIVATE, request.vt) == -1)
-			fprintf(stderr, "failed to activate VT %d: %s\n", request.vt, strerror(errno));
+		if (ioctl(tty_fd, VT_ACTIVATE, request.vt) == -1) {
+			fprintf(stderr, "failed to activate VT %d: %s\n", request.vt,
+			        strerror(errno));
+		}
 		break;
 	default:
 		fprintf(stderr, "unknown request %u\n", request.type);
@@ -277,8 +293,9 @@ handle_socket_data(int socket)
 
 fail:
 	response.success = false;
-	if (fd != -1)
+	if (fd != -1) {
 		close(fd);
+	}
 	fd = -1;
 done:
 	send_fd(socket, fd, response_iov, 1);
@@ -288,33 +305,41 @@ static void
 find_vt(char *vt, size_t size)
 {
 #if defined(__NetBSD__)
-	if (snprintf(vt, size, "/dev/ttyE1") >= size)
+	if (snprintf(vt, size, "/dev/ttyE1") >= size) {
 		die("VT number is too large");
+	}
 #elif defined(__OpenBSD__)
 	const char *tty;
 	tty = ttyname(STDIN_FILENO);
-	if (!tty || strncmp(tty, "/dev/ttyC", 8) != 0)
+	if (!tty || strncmp(tty, "/dev/ttyC", 8) != 0) {
 		die("must be run from wscons VT (/dev/ttyC*)");
-	if (snprintf(vt, size, "%s", tty) >= size)
+	}
+	if (snprintf(vt, size, "%s", tty) >= size) {
 		die("VT number is too large");
+	}
 #else
 	char *vtnr;
 	int tty0_fd, vt_num;
 
-	/* If we are running from an existing X or wayland session, always open a new
-	 * VT instead of using the current one. */
-	if (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY") || !(vtnr = getenv("XDG_VTNR"))) {
+	/* If we are running from an existing X or wayland session, always open a
+	 * new VT instead of using the current one. */
+	if (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY") ||
+	    !(vtnr = getenv("XDG_VTNR"))) {
 		tty0_fd = open("/dev/tty0", O_RDWR);
-		if (tty0_fd == -1)
+		if (tty0_fd == -1) {
 			die("open /dev/tty0:");
-		if (ioctl(tty0_fd, VT_OPENQRY, &vt_num) != 0)
+		}
+		if (ioctl(tty0_fd, VT_OPENQRY, &vt_num) != 0) {
 			die("VT open query failed:");
+		}
 		close(tty0_fd);
-		if (snprintf(vt, size, "/dev/tty%d", vt_num) >= size)
+		if (snprintf(vt, size, "/dev/tty%d", vt_num) >= size) {
 			die("VT number is too large");
+		}
 	} else {
-		if (snprintf(vt, size, "/dev/tty%s", vtnr) >= size)
+		if (snprintf(vt, size, "/dev/tty%s", vtnr) >= size) {
 			die("XDG_VTNR is too long");
+		}
 	}
 #endif
 }
@@ -326,12 +351,15 @@ open_tty(const char *tty_name)
 	int fd;
 
 	/* Check if we are already running on the desired VT */
-	if ((stdin_tty = ttyname(STDIN_FILENO)) && strcmp(tty_name, stdin_tty) == 0)
+	if ((stdin_tty = ttyname(STDIN_FILENO)) &&
+	    strcmp(tty_name, stdin_tty) == 0) {
 		return STDIN_FILENO;
+	}
 
 	fd = open(tty_name, O_RDWR | O_NOCTTY);
-	if (fd < 0)
+	if (fd < 0) {
 		die("open %s:", tty_name);
+	}
 
 	return fd;
 }
@@ -344,29 +372,30 @@ setup_tty(int fd)
 #ifndef __OpenBSD__
 	struct vt_stat state;
 	struct vt_mode mode = {
-		.mode = VT_PROCESS,
-		.relsig = SIGUSR1,
-		.acqsig = SIGUSR2
-	};
+	    .mode = VT_PROCESS, .relsig = SIGUSR1, .acqsig = SIGUSR2};
 #endif
 
-	if (fstat(fd, &st) == -1)
+	if (fstat(fd, &st) == -1) {
 		die("failed to stat TTY fd:");
+	}
 	vt = minor(st.st_rdev);
 
 #ifdef __OpenBSD__
-	if (!device_is_tty(st.st_rdev))
+	if (!device_is_tty(st.st_rdev)) {
 		die("not a valid VT");
+	}
 #else
-	if (!device_is_tty(st.st_rdev) || vt == 0)
+	if (!device_is_tty(st.st_rdev) || vt == 0) {
 		die("not a valid VT");
+	}
 #endif
 
 #ifdef __OpenBSD__
 	/* OpenBSD wscons has no VT_GETSTATE */
 #else
-	if (ioctl(fd, VT_GETSTATE, &state) == -1)
+	if (ioctl(fd, VT_GETSTATE, &state) == -1) {
 		die("failed to get the current VT state:");
+	}
 #endif
 
 #ifndef __OpenBSD__
@@ -376,18 +405,21 @@ setup_tty(int fd)
 #endif
 
 #ifdef KDGETMODE
-	if (ioctl(fd, KDGKBMODE, &original_vt_state.kb_mode))
+	if (ioctl(fd, KDGKBMODE, &original_vt_state.kb_mode)) {
 		die("failed to get keyboard mode:");
-	if (ioctl(fd, KDGETMODE, &original_vt_state.console_mode))
+	}
+	if (ioctl(fd, KDGETMODE, &original_vt_state.console_mode)) {
 		die("failed to get console mode:");
+	}
 #else
 	original_vt_state.kb_mode = K_XLATE;
 	original_vt_state.console_mode = KD_TEXT;
 #endif
 
 #ifdef K_OFF
-	if (ioctl(fd, KDSKBMODE, K_OFF) == -1)
+	if (ioctl(fd, KDSKBMODE, K_OFF) == -1) {
 		die("failed to set keyboard mode to K_OFF:");
+	}
 #endif
 	if (ioctl(fd, KDSETMODE, KD_GRAPHICS) == -1) {
 		perror("KDSETMODE KD_GRAPHICS");
@@ -445,7 +477,7 @@ setup_tty(int fd)
 
 #ifndef __OpenBSD__
 error2:
-	mode = (struct vt_mode){.mode = VT_AUTO };
+	mode = (struct vt_mode){.mode = VT_AUTO};
 	ioctl(fd, VT_SETMODE, &mode);
 error1:
 	ioctl(fd, KDSKBMODE, original_vt_state.kb_mode);
@@ -456,25 +488,29 @@ error0:
 }
 
 static void
-run(int fd) {
+run(int fd)
+{
 	struct pollfd fds[] = {
-		{.fd = fd, .events = POLLIN},
-		{.fd = sigfd[0], .events = POLLIN},
+	    {.fd = fd, .events = POLLIN},
+	    {.fd = sigfd[0], .events = POLLIN},
 	};
 	int status;
 	char sig;
 
 	for (;;) {
 		if (poll(fds, ARRAY_LENGTH(fds), -1) < 0) {
-			if (errno == EINTR)
+			if (errno == EINTR) {
 				continue;
+			}
 			die("poll:");
 		}
-		if (fds[0].revents)
+		if (fds[0].revents) {
 			handle_socket_data(fd);
+		}
 		if (fds[1].revents) {
-			if (read(sigfd[0], &sig, 1) <= 0)
+			if (read(sigfd[0], &sig, 1) <= 0) {
 				continue;
+			}
 			switch (sig) {
 			case SIGCHLD:
 				wait(&status);
@@ -500,8 +536,8 @@ main(int argc, char *argv[])
 	int option;
 	char *vt = NULL, buf[64];
 	struct sigaction action = {
-		.sa_handler = handle_signal,
-		.sa_flags = SA_RESTART,
+	    .sa_handler = handle_signal,
+	    .sa_flags = SA_RESTART,
 	};
 	sigset_t set;
 	pid_t pid;
@@ -520,22 +556,29 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (argc - optind < 1)
+	if (argc - optind < 1) {
 		usage(argv[0]);
+	}
 
-	if (socketpair(AF_LOCAL, SOCK_SEQPACKET, 0, sock) == -1)
+	if (socketpair(AF_LOCAL, SOCK_SEQPACKET, 0, sock) == -1) {
 		die("socketpair:");
-	if (fcntl(sock[0], F_SETFD, FD_CLOEXEC) == -1)
+	}
+	if (fcntl(sock[0], F_SETFD, FD_CLOEXEC) == -1) {
 		die("failed set CLOEXEC on socket:");
+	}
 
-	if (pipe2(sigfd, O_CLOEXEC) == -1)
+	if (pipe2(sigfd, O_CLOEXEC) == -1) {
 		die("pipe:");
-	if (sigaction(SIGCHLD, &action, NULL) == -1)
+	}
+	if (sigaction(SIGCHLD, &action, NULL) == -1) {
 		die("sigaction SIGCHLD:");
-	if (sigaction(SIGUSR1, &action, NULL) == -1)
+	}
+	if (sigaction(SIGUSR1, &action, NULL) == -1) {
 		die("sigaction SIGUSR1:");
-	if (sigaction(SIGUSR2, &action, NULL) == -1)
+	}
+	if (sigaction(SIGUSR2, &action, NULL) == -1) {
 		die("sigaction SIGUSR2:");
+	}
 
 	sigfillset(&set);
 	sigdelset(&set, SIGCHLD);
@@ -559,21 +602,28 @@ main(int argc, char *argv[])
 	if (!getenv("XDG_RUNTIME_DIR")) {
 		uid_t uid = getuid();
 		snprintf(buf, sizeof(buf), "/tmp/XDG_RUNTIME_DIR_%d", uid);
-		if (mkdir(buf, 0700) == -1 && errno != EEXIST)
+		if (mkdir(buf, 0700) == -1 && errno != EEXIST) {
 			die("mkdir %s:", buf);
+		}
 		setenv("XDG_RUNTIME_DIR", buf, 1);
 		fprintf(stderr, "set XDG_RUNTIME_DIR=%s\n", buf);
 	}
 
-	if ((errno = posix_spawnattr_init(&attr)))
+	if ((errno = posix_spawnattr_init(&attr))) {
 		die("posix_spawnattr_init:");
-	if ((errno = posix_spawnattr_setflags(&attr, POSIX_SPAWN_RESETIDS|POSIX_SPAWN_SETSIGMASK)))
+	}
+	if ((errno = posix_spawnattr_setflags(&attr, POSIX_SPAWN_RESETIDS |
+	                                                 POSIX_SPAWN_SETSIGMASK))) {
 		die("posix_spawnattr_setflags:");
+	}
 	sigemptyset(&set);
-	if ((errno = posix_spawnattr_setsigmask(&attr, &set)))
+	if ((errno = posix_spawnattr_setsigmask(&attr, &set))) {
 		die("posix_spawnattr_setsigmask:");
-	if ((errno = posix_spawnp(&pid, argv[optind], NULL, &attr, argv + optind, environ)))
+	}
+	if ((errno = posix_spawnp(&pid, argv[optind], NULL, &attr, argv + optind,
+	                          environ))) {
 		die("posix_spawnp %s:", argv[optind]);
+	}
 	posix_spawnattr_destroy(&attr);
 
 	close(sock[1]);

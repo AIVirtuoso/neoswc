@@ -5,14 +5,14 @@
 #include "screen.h"
 #include "util.h"
 
+#include <drm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <drm.h>
 #include <xf86drm.h>
 
 static const struct wl_output_interface output_impl = {
-	.release = destroy_resource,
+    .release = destroy_resource,
 };
 
 static void
@@ -31,25 +31,32 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		return;
 	}
 
-	wl_resource_set_implementation(resource, &output_impl, output, &remove_resource);
+	wl_resource_set_implementation(resource, &output_impl, output,
+	                               &remove_resource);
 	wl_list_insert(&output->resources, wl_resource_get_link(resource));
 
-	wl_output_send_geometry(resource, screen->base.geometry.x, screen->base.geometry.y,
-	                        output->physical_width, output->physical_height,
-	                        0, "unknown", "unknown", WL_OUTPUT_TRANSFORM_NORMAL);
+	wl_output_send_geometry(resource, screen->base.geometry.x,
+	                        screen->base.geometry.y, output->physical_width,
+	                        output->physical_height, 0, "unknown", "unknown",
+	                        WL_OUTPUT_TRANSFORM_NORMAL);
 
-	wl_array_for_each (mode, &output->modes) {
+	wl_array_for_each(mode, &output->modes)
+	{
 		flags = 0;
-		if (mode->preferred)
+		if (mode->preferred) {
 			flags |= WL_OUTPUT_MODE_PREFERRED;
-		if (mode_equal(&screen->planes.primary.mode, mode))
+		}
+		if (mode_equal(&screen->planes.primary.mode, mode)) {
 			flags |= WL_OUTPUT_MODE_CURRENT;
+		}
 
-		wl_output_send_mode(resource, flags, mode->width, mode->height, mode->refresh);
+		wl_output_send_mode(resource, flags, mode->width, mode->height,
+		                    mode->refresh);
 	}
 
-	if (version >= 2)
+	if (version >= 2) {
 		wl_output_send_done(resource);
+	}
 }
 
 struct output *
@@ -64,7 +71,8 @@ output_new(drmModeConnectorPtr connector)
 		goto error0;
 	}
 
-	output->global = wl_global_create(swc.display, &wl_output_interface, 3, output, &bind_output);
+	output->global = wl_global_create(swc.display, &wl_output_interface, 3,
+	                                  output, &bind_output);
 
 	if (!output->global) {
 		ERROR("Failed to create output global\n");
@@ -82,22 +90,27 @@ output_new(drmModeConnectorPtr connector)
 
 	output->connector = connector->connector_id;
 
-	if (connector->count_modes == 0)
+	if (connector->count_modes == 0) {
 		goto error2;
+	}
 
-	modes = wl_array_add(&output->modes, connector->count_modes * sizeof(*modes));
-	if (!modes)
+	modes =
+	    wl_array_add(&output->modes, connector->count_modes * sizeof(*modes));
+	if (!modes) {
 		goto error2;
+	}
 
 	for (i = 0; i < connector->count_modes; ++i) {
 		mode_initialize(&modes[i], &connector->modes[i]);
 
-		if (modes[i].preferred)
+		if (modes[i].preferred) {
 			output->preferred_mode = &modes[i];
+		}
 	}
 
-	if (!output->preferred_mode)
+	if (!output->preferred_mode) {
 		output->preferred_mode = &modes[0];
+	}
 
 	return output;
 

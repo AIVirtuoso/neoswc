@@ -32,7 +32,9 @@ struct swc_shm {
 	struct wld_renderer *renderer;
 };
 
-struct swc_shm *shm_create(struct wl_display *display);
-void shm_destroy(struct swc_shm *shm);
+struct swc_shm *
+shm_create(struct wl_display *display);
+void
+shm_destroy(struct swc_shm *shm);
 
 #endif

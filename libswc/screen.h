@@ -24,8 +24,8 @@
 #ifndef SWC_SCREEN_H
 #define SWC_SCREEN_H
 
-#include "swc.h"
 #include "primary_plane.h"
+#include "swc.h"
 
 #include <wayland-util.h>
 
@@ -37,7 +37,9 @@ struct screen_modifier {
 	 * Takes the screen geometry and sets 'usable' to the usable region of the
 	 * screen. 'usable' is an already initialized pixman region.
 	 */
-	void (*modify)(struct screen_modifier *modifier, const struct swc_rectangle *geometry, struct pixman_region32 *usable);
+	void (*modify)(struct screen_modifier *modifier,
+	               const struct swc_rectangle *geometry,
+	               struct pixman_region32 *usable);
 
 	struct wl_list link;
 };
@@ -64,11 +66,15 @@ struct screen {
 	struct wl_list link;
 };
 
-bool screens_initialize(void);
-void screens_finalize(void);
+bool
+screens_initialize(void);
+void
+screens_finalize(void);
 
-struct screen *screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane);
-void screen_destroy(struct screen *screen);
+struct screen *
+screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane);
+void
+screen_destroy(struct screen *screen);
 
 static inline uint32_t
 screen_mask(struct screen *screen)
@@ -76,6 +82,7 @@ screen_mask(struct screen *screen)
 	return 1 << screen->id;
 }
 
-void screen_update_usable_geometry(struct screen *screen);
+void
+screen_update_usable_geometry(struct screen *screen);
 
 #endif

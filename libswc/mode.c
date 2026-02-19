@@ -37,7 +37,6 @@ mode_initialize(struct mode *mode, drmModeModeInfo *mode_info)
 bool
 mode_equal(const struct mode *mode1, const struct mode *mode2)
 {
-	return mode1->width == mode2->width
-	    && mode1->height == mode2->height
-	    && mode1->refresh == mode2->refresh;
+	return mode1->width == mode2->width && mode1->height == mode2->height &&
+	       mode1->refresh == mode2->refresh;
 }

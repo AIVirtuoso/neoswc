@@ -6,7 +6,8 @@
 #include <wayland-server.h>
 
 static void
-add(struct wl_client *client, struct wl_resource *resource, int32_t x, int32_t y, int32_t width, int32_t height)
+add(struct wl_client *client, struct wl_resource *resource, int32_t x,
+    int32_t y, int32_t width, int32_t height)
 {
 	pixman_region32_t *region = wl_resource_get_user_data(resource);
 
@@ -14,7 +15,8 @@ add(struct wl_client *client, struct wl_resource *resource, int32_t x, int32_t y
 }
 
 static void
-subtract(struct wl_client *client, struct wl_resource *resource, int32_t x, int32_t y, int32_t width, int32_t height)
+subtract(struct wl_client *client, struct wl_resource *resource, int32_t x,
+         int32_t y, int32_t width, int32_t height)
 {
 	pixman_region32_t *region = wl_resource_get_user_data(resource);
 	pixman_region32_t operand;
@@ -24,9 +26,9 @@ subtract(struct wl_client *client, struct wl_resource *resource, int32_t x, int3
 }
 
 static const struct wl_region_interface region_impl = {
-	.destroy = destroy_resource,
-	.add = add,
-	.subtract = subtract,
+    .destroy = destroy_resource,
+    .add = add,
+    .subtract = subtract,
 };
 
 static void
@@ -45,13 +47,16 @@ region_new(struct wl_client *client, uint32_t version, uint32_t id)
 	struct wl_resource *resource;
 
 	region = malloc(sizeof(*region));
-	if (!region)
+	if (!region) {
 		goto error0;
+	}
 
 	resource = wl_resource_create(client, &wl_region_interface, version, id);
-	if (!resource)
+	if (!resource) {
 		goto error1;
-	wl_resource_set_implementation(resource, &region_impl, region, &region_destroy);
+	}
+	wl_resource_set_implementation(resource, &region_impl, region,
+	                               &region_destroy);
 
 	pixman_region32_init(region);
 

@@ -28,8 +28,8 @@
 #include "mode.h"
 #include "view.h"
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <wayland-server.h>
 
 struct primary_plane {
@@ -43,7 +43,11 @@ struct primary_plane {
 	struct wl_listener swc_listener;
 };
 
-bool primary_plane_initialize(struct primary_plane *plane, uint32_t crtc, struct mode *mode, uint32_t *connectors, uint32_t num_connectors);
-void primary_plane_finalize(struct primary_plane *plane);
+bool
+primary_plane_initialize(struct primary_plane *plane, uint32_t crtc,
+                         struct mode *mode, uint32_t *connectors,
+                         uint32_t num_connectors);
+void
+primary_plane_finalize(struct primary_plane *plane);
 
 #endif

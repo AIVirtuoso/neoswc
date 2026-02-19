@@ -45,7 +45,8 @@ struct wld_buffer;
  * wayland headers
  *
  */
-bool swc_cursor_position(int32_t *x, int32_t *y);
+bool
+swc_cursor_position(int32_t *x, int32_t *y);
 
 /**
  * Send a pointer button event to the currently focused client.
@@ -53,7 +54,8 @@ bool swc_cursor_position(int32_t *x, int32_t *y);
  * This is intended for window managers which intercept button events (for
  * example for mouse chords) but want normal clicks to still reach clients.
  */
-void swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state);
+void
+swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state);
 
 /**
  * Send a pointer axis event to the currently focused client.
@@ -63,7 +65,8 @@ void swc_pointer_send_button(uint32_t time, uint32_t button, uint32_t state);
  *
  * value120 uses the wl_pointer "120 units" convention.
  */
-void swc_pointer_send_axis(uint32_t time, uint32_t axis, int32_t value120);
+void
+swc_pointer_send_axis(uint32_t time, uint32_t axis, int32_t value120);
 
 /* Cursor control (compositor-internal cursor) */
 enum swc_cursor_kind {
@@ -85,15 +88,18 @@ enum swc_cursor_mode {
 /**
  * override the compositor's internal cursor
  *
- * this is intended for window managers to show mode cursors (move/resize/select) like the ones in hevel
- * If a client has set its own cursor surface, swc may ignore the override.
+ * this is intended for window managers to show mode cursors
+ * (move/resize/select) like the ones in hevel If a client has set its own
+ * cursor surface, swc may ignore the override.
  */
-void swc_set_cursor(enum swc_cursor_kind kind);
+void
+swc_set_cursor(enum swc_cursor_kind kind);
 
 /**
  * control whether client cursor surfaces are honored
  */
-void swc_set_cursor_mode(enum swc_cursor_mode mode);
+void
+swc_set_cursor_mode(enum swc_cursor_mode mode);
 
 /**
  * set a custom argb8888 cursor image for a given kind
@@ -101,12 +107,13 @@ void swc_set_cursor_mode(enum swc_cursor_mode mode);
  * `argb8888` is a pointer to `width*height` pixels in ARGB8888 order.
  * the caller has to keep the pixel memory alive for as long as it may be used
  */
-void swc_set_cursor_image(enum swc_cursor_kind kind,
-                          const uint32_t *argb8888,
-                          uint32_t width, uint32_t height,
-                          int32_t hotspot_x, int32_t hotspot_y);
+void
+swc_set_cursor_image(enum swc_cursor_kind kind, const uint32_t *argb8888,
+                     uint32_t width, uint32_t height, int32_t hotspot_x,
+                     int32_t hotspot_y);
 
-void swc_clear_cursor_image(enum swc_cursor_kind kind);
+void
+swc_clear_cursor_image(enum swc_cursor_kind kind);
 
 /**
  * draw [or update] a simple box overlay
@@ -115,12 +122,15 @@ void swc_clear_cursor_image(enum swc_cursor_kind kind);
  * coordinates. this draws only the border. Call swc_overlay_clear() to remove
  * it
  */
-void swc_overlay_set_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, uint32_t border_width);
+void
+swc_overlay_set_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2,
+                    uint32_t color, uint32_t border_width);
 
 /**
  * Clear the current overlay, if any.
  */
-void swc_overlay_clear(void);
+void
+swc_overlay_clear(void);
 
 /**
  * Set the compositor zoom level.
@@ -128,12 +138,14 @@ void swc_overlay_clear(void);
  * 1.0 = normal, >1.0 = zoomed in, <1.0 = zoomed out
  * Uses software (pixman) scaling.
  */
-void swc_set_zoom(float level);
+void
+swc_set_zoom(float level);
 
 /**
  * Get the current zoom level.
  */
-float swc_get_zoom(void);
+float
+swc_get_zoom(void);
 
 /* Rectangles {{{ */
 
@@ -160,8 +172,8 @@ struct swc_screen_handler {
 	void (*geometry_changed)(void *data);
 
 	/**
-	 * Called when the geometry of the screen available for laying out windows has
-	 * changed.
+	 * Called when the geometry of the screen available for laying out windows
+	 * has changed.
 	 *
 	 * A window manager should respond by making sure all visible windows are
 	 * within this area.
@@ -189,7 +201,9 @@ struct swc_screen {
 /**
  * Set the handler associated with this screen.
  */
-void swc_screen_set_handler(struct swc_screen *screen, const struct swc_screen_handler *handler, void *data);
+void
+swc_screen_set_handler(struct swc_screen *screen,
+                       const struct swc_screen_handler *handler, void *data);
 
 /* }}} */
 
@@ -260,29 +274,35 @@ struct swc_window {
 /**
  * Set the handler associated with this window.
  */
-void swc_window_set_handler(struct swc_window *window, const struct swc_window_handler *handler, void *data);
+void
+swc_window_set_handler(struct swc_window *window,
+                       const struct swc_window_handler *handler, void *data);
 
 /**
  * Request that the specified window close.
  */
-void swc_window_close(struct swc_window *window);
+void
+swc_window_close(struct swc_window *window);
 
 /**
  * Make the specified window visible.
  */
-void swc_window_show(struct swc_window *window);
+void
+swc_window_show(struct swc_window *window);
 
 /**
  * Make the specified window hidden.
  */
-void swc_window_hide(struct swc_window *window);
+void
+swc_window_hide(struct swc_window *window);
 
 /**
  * Set the keyboard focus to the specified window.
  *
  * If window is NULL, the keyboard will have no focus.
  */
-void swc_window_focus(struct swc_window *window);
+void
+swc_window_focus(struct swc_window *window);
 
 /**
  * Sets the window to stacked mode.
@@ -293,7 +313,8 @@ void swc_window_focus(struct swc_window *window);
  *
  * Use of this mode is required to allow interactive moving and resizing.
  */
-void swc_window_set_stacked(struct swc_window *window);
+void
+swc_window_set_stacked(struct swc_window *window);
 
 /**
  * Sets the window to tiled mode.
@@ -304,12 +325,14 @@ void swc_window_set_stacked(struct swc_window *window);
  *
  * It is invalid to interactively move or resize a window in tiled mode.
  */
-void swc_window_set_tiled(struct swc_window *window);
+void
+swc_window_set_tiled(struct swc_window *window);
 
 /**
  * Sets the window to fullscreen mode.
  */
-void swc_window_set_fullscreen(struct swc_window *window, struct swc_screen *screen);
+void
+swc_window_set_fullscreen(struct swc_window *window, struct swc_screen *screen);
 
 /**
  * Set the window's position.
@@ -317,7 +340,8 @@ void swc_window_set_fullscreen(struct swc_window *window, struct swc_screen *scr
  * The x and y coordinates refer to the top-left corner of the actual contents
  * of the window and should be adjusted for the border size.
  */
-void swc_window_set_position(struct swc_window *window, int32_t x, int32_t y);
+void
+swc_window_set_position(struct swc_window *window, int32_t x, int32_t y);
 
 /**
  * Set the window's size.
@@ -325,7 +349,8 @@ void swc_window_set_position(struct swc_window *window, int32_t x, int32_t y);
  * The width and height refer to the dimension of the actual contents of the
  * window and should be adjusted for the border size.
  */
-void swc_window_set_size(struct swc_window *window, uint32_t width, uint32_t height);
+void
+swc_window_set_size(struct swc_window *window, uint32_t width, uint32_t height);
 
 /**
  * Set the window's size and position.
@@ -333,39 +358,49 @@ void swc_window_set_size(struct swc_window *window, uint32_t width, uint32_t hei
  * This is a convenience function that is equivalent to calling
  * swc_window_set_size and then swc_window_set_position.
  */
-void swc_window_set_geometry(struct swc_window *window, const struct swc_rectangle *geometry);
+void
+swc_window_set_geometry(struct swc_window *window,
+                        const struct swc_rectangle *geometry);
 
 /**
  * Get the window's current geometry in compositor-global coordinates.
  */
-bool swc_window_get_geometry(const struct swc_window *window, struct swc_rectangle *geometry);
+bool
+swc_window_get_geometry(const struct swc_window *window,
+                        struct swc_rectangle *geometry);
 
 /**
  * Get the pid of the client that owns this window
  *
  * returns pid, or 0 if unavailable
  */
-pid_t swc_window_get_pid(struct swc_window *window);
+pid_t
+swc_window_get_pid(struct swc_window *window);
 
 /**
  * Set the window's border color and width.
  *
  * NOTE: The window's geometry remains unchanged, and should be updated if a
  *       fixed top-left corner of the border is desired.
- * 
+ *
  * info from dalem: unsure how much double borders break!
  */
-void swc_window_set_border(struct swc_window *window, uint32_t inner_border_color, uint32_t inner_border_width, uint32_t outer_border_color, uint32_t outer_border_width);
+void
+swc_window_set_border(struct swc_window *window, uint32_t inner_border_color,
+                      uint32_t inner_border_width, uint32_t outer_border_color,
+                      uint32_t outer_border_width);
 
 /**
  * Begin an interactive move of the specified window.
  */
-void swc_window_begin_move(struct swc_window *window);
+void
+swc_window_begin_move(struct swc_window *window);
 
 /**
  * End an interactive move of the specified window.
  */
-void swc_window_end_move(struct swc_window *window);
+void
+swc_window_end_move(struct swc_window *window);
 
 enum {
 	SWC_WINDOW_EDGE_AUTO = 0,
@@ -378,19 +413,22 @@ enum {
 /**
  * Begin an interactive resize of the specified window.
  */
-void swc_window_begin_resize(struct swc_window *window, uint32_t edges);
+void
+swc_window_begin_resize(struct swc_window *window, uint32_t edges);
 
 /**
  * End an interactive resize of the specified window.
  */
-void swc_window_end_resize(struct swc_window *window);
+void
+swc_window_end_resize(struct swc_window *window);
 
 /**
  * returns the topmost window at any given compositor global coordinates
  *
  * returns null if there is no window at that point
  */
-struct swc_window *swc_window_at(int32_t x, int32_t y);
+struct swc_window *
+swc_window_at(int32_t x, int32_t y);
 
 /**
  * move a window in the stacking order by one step
@@ -398,7 +436,8 @@ struct swc_window *swc_window_at(int32_t x, int32_t y);
  * direction < 0 moves the window towards the front (higher)
  * direction > 0 moves the window towards the back (lower)
  */
-void swc_window_stack(struct swc_window *window, int32_t direction);
+void
+swc_window_stack(struct swc_window *window, int32_t direction);
 
 /* }}} */
 
@@ -417,15 +456,19 @@ enum swc_binding_type {
 	SWC_BINDING_BUTTON,
 };
 
-typedef void (*swc_binding_handler)(void *data, uint32_t time, uint32_t value, uint32_t state);
-typedef void (*swc_axis_binding_handler)(void *data, uint32_t time, uint32_t axis, int32_t value120);
+typedef void (*swc_binding_handler)(void *data, uint32_t time, uint32_t value,
+                                    uint32_t state);
+typedef void (*swc_axis_binding_handler)(void *data, uint32_t time,
+                                         uint32_t axis, int32_t value120);
 
 /**
  * Register a new input binding.
  *
  * Returns 0 on success, negative error code otherwise.
  */
-int swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t value, swc_binding_handler handler, void *data);
+int
+swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t value,
+                swc_binding_handler handler, void *data);
 
 /**
  * register a new pointer axis binding
@@ -433,7 +476,9 @@ int swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t val
  * this will intercept axis events from clients; use swc_pointer_send_axis()
  * from the handler to forward events when appropriate
  */
-int swc_add_axis_binding(uint32_t modifiers, uint32_t axis, swc_axis_binding_handler handler, void *data);
+int
+swc_add_axis_binding(uint32_t modifiers, uint32_t axis,
+                     swc_axis_binding_handler handler, void *data);
 
 /* }}} */
 
@@ -442,14 +487,17 @@ int swc_add_axis_binding(uint32_t modifiers, uint32_t axis, swc_axis_binding_han
 /**
  * Set fallback wallpaper buffer for all screens that dom't have an override.
  */
-void swc_wallpaper_set_buffer(struct wld_buffer *buffer);
+void
+swc_wallpaper_set_buffer(struct wld_buffer *buffer);
 
 /**
  * Set wallpaper buffer for specified screen id.
  *
  * Passing NULL clears the override for that screen.
  */
-void swc_wallpaper_set_buffer_for_screen(uint8_t screen_id, struct wld_buffer *buffer);
+void
+swc_wallpaper_set_buffer_for_screen(uint8_t screen_id,
+                                    struct wld_buffer *buffer);
 
 /**
  * Set wallpaper to a single color
@@ -458,7 +506,8 @@ void swc_wallpaper_set_buffer_for_screen(uint8_t screen_id, struct wld_buffer *b
  */
 
 extern uint32_t bgcolor;
-void swc_wallpaper_color_set(uint32_t color);
+void
+swc_wallpaper_color_set(uint32_t color);
 
 /* }}} */
 
@@ -483,7 +532,8 @@ struct swc_manager {
 	void (*new_device)(struct libinput_device *device);
 
 	/**
-	 * Called when the session gets activated (for example, startup or VT switch).
+	 * Called when the session gets activated (for example, startup or VT
+	 * switch).
 	 */
 	void (*activate)(void);
 
@@ -497,12 +547,15 @@ struct swc_manager {
  * Initializes the compositor using the specified display, event_loop, and
  * manager.
  */
-bool swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, const struct swc_manager *manager);
+bool
+swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
+               const struct swc_manager *manager);
 
 /**
  * Stops the compositor, releasing any used resources.
  */
-void swc_finalize(void);
+void
+swc_finalize(void);
 
 #ifdef __cplusplus
 }

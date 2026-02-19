@@ -24,8 +24,8 @@
 #ifndef SWC_INTERNAL_H
 #define SWC_INTERNAL_H
 
-#include <wayland-server.h>
 #include <stdbool.h>
+#include <wayland-server.h>
 
 enum {
 	SWC_EVENT_ACTIVATED,
@@ -62,7 +62,9 @@ struct swc {
 
 extern struct swc swc;
 
-void swc_activate(void);
-void swc_deactivate(void);
+void
+swc_activate(void);
+void
+swc_deactivate(void);
 
 #endif

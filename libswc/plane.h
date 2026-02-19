@@ -39,7 +39,9 @@ struct plane {
 	struct wl_list link;
 };
 
-struct plane *plane_new(uint32_t id);
-void plane_destroy(struct plane *plane);
+struct plane *
+plane_new(uint32_t id);
+void
+plane_destroy(struct plane *plane);
 
 #endif

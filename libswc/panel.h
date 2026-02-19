@@ -29,6 +29,8 @@
 struct surface;
 struct wl_client;
 
-struct panel *panel_new(struct wl_client *client, uint32_t version, uint32_t id, struct surface *surface);
+struct panel *
+panel_new(struct wl_client *client, uint32_t version, uint32_t id,
+          struct surface *surface);
 
 #endif

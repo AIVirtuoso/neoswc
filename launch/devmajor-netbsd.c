@@ -20,19 +20,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <sys/stat.h>
-#include <stdlib.h>
 #include "devmajor.h"
+#include <stdlib.h>
+#include <sys/stat.h>
 
 bool
 device_is_input(dev_t rdev)
 {
-	if (major(rdev) == getdevmajor("wskbd", S_IFCHR))
+	if (major(rdev) == getdevmajor("wskbd", S_IFCHR)) {
 		return true;
-	if (major(rdev) == getdevmajor("wsmouse", S_IFCHR))
+	}
+	if (major(rdev) == getdevmajor("wsmouse", S_IFCHR)) {
 		return true;
-	if (major(rdev) == getdevmajor("wsmux", S_IFCHR))
+	}
+	if (major(rdev) == getdevmajor("wsmux", S_IFCHR)) {
 		return true;
+	}
 	return false;
 }
 
@@ -47,4 +50,3 @@ device_is_drm(dev_t rdev)
 {
 	return major(rdev) == getdevmajor("drm", S_IFCHR);
 }
-

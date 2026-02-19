@@ -38,7 +38,9 @@ struct mode {
 	drmModeModeInfo info;
 };
 
-bool mode_initialize(struct mode *mode, drmModeModeInfo *mode_info);
-bool mode_equal(const struct mode *mode1, const struct mode *mode2);
+bool
+mode_initialize(struct mode *mode, drmModeModeInfo *mode_info);
+bool
+mode_equal(const struct mode *mode1, const struct mode *mode2);
 
 #endif

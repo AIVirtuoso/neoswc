@@ -28,9 +28,9 @@
 #include "drm.h"
 #include "event.h"
 #include "internal.h"
-#include "launch.h"
 #include "kde_decoration.h"
 #include "keyboard.h"
+#include "launch.h"
 #include "panel_manager.h"
 #include "pointer.h"
 #include "screen.h"
@@ -45,7 +45,7 @@
 #include "xdg_decoration.h"
 #include "xdg_shell.h"
 #ifdef ENABLE_XWAYLAND
-# include "xserver.h"
+#include "xserver.h"
 #endif
 
 extern struct swc_launch swc_launch;
@@ -59,11 +59,11 @@ extern struct swc_xserver swc_xserver;
 extern struct pointer_handler screens_pointer_handler;
 
 struct swc swc = {
-	.bindings = &swc_bindings,
-	.compositor = &swc_compositor,
-	.drm = &swc_drm,
+    .bindings = &swc_bindings,
+    .compositor = &swc_compositor,
+    .drm = &swc_drm,
 #ifdef ENABLE_XWAYLAND
-	.xserver = &swc_xserver,
+    .xserver = &swc_xserver,
 #endif
 };
 
@@ -74,18 +74,24 @@ setup_compositor(void)
 	struct screen *screen;
 	struct swc_rectangle *geom;
 
-	wl_list_insert(&swc.seat->keyboard->handlers, &swc.bindings->keyboard_handler->link);
-	wl_list_insert(&swc.seat->pointer->handlers, &swc.bindings->pointer_handler->link);
-	wl_list_insert(&swc.seat->pointer->handlers, &swc.compositor->pointer_handler->link);
+	wl_list_insert(&swc.seat->keyboard->handlers,
+	               &swc.bindings->keyboard_handler->link);
+	wl_list_insert(&swc.seat->pointer->handlers,
+	               &swc.bindings->pointer_handler->link);
+	wl_list_insert(&swc.seat->pointer->handlers,
+	               &swc.compositor->pointer_handler->link);
 	wl_list_insert(&swc.seat->pointer->handlers, &screens_pointer_handler.link);
-	wl_signal_add(&swc.seat->pointer->focus.event_signal, &window_enter_listener);
+	wl_signal_add(&swc.seat->pointer->focus.event_signal,
+	              &window_enter_listener);
 
 	/* Calculate pointer region */
 	pixman_region32_init(&pointer_region);
 
-	wl_list_for_each (screen, &swc.screens, link) {
+	wl_list_for_each(screen, &swc.screens, link)
+	{
 		geom = &screen->base.geometry;
-		pixman_region32_union_rect(&pointer_region, &pointer_region, geom->x, geom->y, geom->width, geom->height);
+		pixman_region32_union_rect(&pointer_region, &pointer_region, geom->x,
+		                           geom->y, geom->width, geom->height);
 	}
 
 	pointer_set_region(swc.seat->pointer, &pointer_region);
@@ -97,8 +103,9 @@ swc_activate(void)
 {
 	swc.active = true;
 	send_event(&swc.event_signal, SWC_EVENT_ACTIVATED, NULL);
-	if (swc.manager->activate)
+	if (swc.manager->activate) {
 		swc.manager->activate();
+	}
 }
 
 void
@@ -106,34 +113,42 @@ swc_deactivate(void)
 {
 	swc.active = false;
 	send_event(&swc.event_signal, SWC_EVENT_DEACTIVATED, NULL);
-	if (swc.manager->deactivate)
+	if (swc.manager->deactivate) {
 		swc.manager->deactivate();
+	}
 }
 
 EXPORT bool
 swc_cursor_position(int32_t *x, int32_t *y)
 {
-	if (x)
+	if (x) {
 		*x = 0;
-	if (y)
+	}
+	if (y) {
 		*y = 0;
+	}
 
-	if (!swc.seat || !swc.seat->pointer)
+	if (!swc.seat || !swc.seat->pointer) {
 		return false;
+	}
 
-	if (x)
+	if (x) {
 		*x = swc.seat->pointer->x;
-	if (y)
+	}
+	if (y) {
 		*y = swc.seat->pointer->y;
+	}
 
 	return true;
 }
 
 EXPORT bool
-swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop, const struct swc_manager *manager)
+swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
+               const struct swc_manager *manager)
 {
 	swc.display = display;
-	swc.event_loop = event_loop ? event_loop : wl_display_get_event_loop(display);
+	swc.event_loop =
+	    event_loop ? event_loop : wl_display_get_event_loop(display);
 	swc.manager = manager;
 	const char *default_seat = "seat0";
 	wl_signal_init(&swc.event_signal);

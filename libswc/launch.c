@@ -27,8 +27,8 @@
 #include "launch/protocol.h"
 #include "util.h"
 
-#include <sys/uio.h>
 #include <fcntl.h>
+#include <sys/uio.h>
 #include <unistd.h>
 #include <wayland-server.h>
 
@@ -60,11 +60,12 @@ handle_data(int fd, uint32_t mask, void *data)
 {
 	struct swc_launch_event event;
 	struct iovec iov[1] = {
-		{.iov_base = &event, .iov_len = sizeof(event)},
+	    {.iov_base = &event, .iov_len = sizeof(event)},
 	};
 
-	if (receive_fd(fd, NULL, iov, 1) != -1)
+	if (receive_fd(fd, NULL, iov, 1) != -1) {
 		handle_event(&event);
+	}
 	return 1;
 }
 
@@ -73,20 +74,25 @@ launch_initialize(void)
 {
 	char *socket_string, *end;
 
-	if (!(socket_string = getenv(SWC_LAUNCH_SOCKET_ENV)))
+	if (!(socket_string = getenv(SWC_LAUNCH_SOCKET_ENV))) {
 		return false;
+	}
 
 	launch.socket = strtol(socket_string, &end, 10);
-	if (*end != '\0')
+	if (*end != '\0') {
 		return false;
+	}
 
 	unsetenv(SWC_LAUNCH_SOCKET_ENV);
-	if (fcntl(launch.socket, F_SETFD, FD_CLOEXEC) < 0)
+	if (fcntl(launch.socket, F_SETFD, FD_CLOEXEC) < 0) {
 		return false;
+	}
 
-	launch.source = wl_event_loop_add_fd(swc.event_loop, launch.socket, WL_EVENT_READABLE, &handle_data, NULL);
-	if (!launch.source)
+	launch.source = wl_event_loop_add_fd(swc.event_loop, launch.socket,
+	                                     WL_EVENT_READABLE, &handle_data, NULL);
+	if (!launch.source) {
 		return false;
+	}
 
 	return true;
 }
@@ -99,24 +105,28 @@ launch_finalize(void)
 }
 
 static bool
-send_request(struct swc_launch_request *request, const void *data, size_t size, struct swc_launch_event *event, int out_fd, int *in_fd)
+send_request(struct swc_launch_request *request, const void *data, size_t size,
+             struct swc_launch_event *event, int out_fd, int *in_fd)
 {
 	struct iovec request_iov[2] = {
-		{.iov_base = request, .iov_len = sizeof(*request)},
-		{.iov_base = (void *)data, .iov_len = size},
+	    {.iov_base = request, .iov_len = sizeof(*request)},
+	    {.iov_base = (void *)data, .iov_len = size},
 	};
 	struct iovec response_iov[1] = {
-		{.iov_base = event, .iov_len = sizeof(*event)},
+	    {.iov_base = event, .iov_len = sizeof(*event)},
 	};
 
 	request->serial = ++launch.next_serial;
 
-	if (send_fd(launch.socket, out_fd, request_iov, 1 + (size > 0)) == -1)
+	if (send_fd(launch.socket, out_fd, request_iov, 1 + (size > 0)) == -1) {
 		return false;
+	}
 
 	while (receive_fd(launch.socket, in_fd, response_iov, 1) != -1) {
-		if (event->type == SWC_LAUNCH_EVENT_RESPONSE && event->serial == request->serial)
+		if (event->type == SWC_LAUNCH_EVENT_RESPONSE &&
+		    event->serial == request->serial) {
 			return true;
+		}
 		handle_event(event);
 	}
 
@@ -133,8 +143,9 @@ launch_open_device(const char *path, int flags)
 	request.type = SWC_LAUNCH_REQUEST_OPEN_DEVICE;
 	request.flags = flags;
 
-	if (!send_request(&request, path, strlen(path) + 1, &response, -1, &fd))
+	if (!send_request(&request, path, strlen(path) + 1, &response, -1, &fd)) {
 		return -1;
+	}
 
 	return fd;
 }
@@ -148,8 +159,9 @@ launch_activate_vt(unsigned vt)
 	request.type = SWC_LAUNCH_REQUEST_ACTIVATE_VT;
 	request.vt = vt;
 
-	if (!send_request(&request, NULL, 0, &response, -1, NULL))
+	if (!send_request(&request, NULL, 0, &response, -1, NULL)) {
 		return false;
+	}
 
 	return response.success;
 }

@@ -30,15 +30,15 @@
 #include "util.h"
 #include "xwm.h"
 
-#include <signal.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
-#include <sys/stat.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
+#include <unistd.h>
 #include <wayland-server.h>
 
 #define LOCK_FMT "/tmp/.X%d-lock"
@@ -61,24 +61,28 @@ open_socket(struct sockaddr_un *addr)
 {
 	int fd;
 
-	if ((fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0)
+	if ((fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0) {
 		goto error0;
+	}
 
 	/* Unlink the socket location in case it was being used by a process which
 	 * left around a stale lockfile. */
 	unlink(addr->sun_path);
 
-	if (bind(fd, (struct sockaddr *)addr, sizeof(*addr)) < 0)
+	if (bind(fd, (struct sockaddr *)addr, sizeof(*addr)) < 0) {
 		goto error1;
+	}
 
-	if (listen(fd, 1) < 0)
+	if (listen(fd, 1) < 0) {
 		goto error2;
+	}
 
 	return fd;
 
 error2:
-	if (addr->sun_path[0])
+	if (addr->sun_path[0]) {
 		unlink(addr->sun_path);
+	}
 error1:
 	close(fd);
 error0:
@@ -116,22 +120,27 @@ begin:
 		pid_t owner;
 
 		/* Check if the owning process is still alive. */
-		if ((lock_fd = open(lock_name, O_RDONLY)) == -1)
+		if ((lock_fd = open(lock_name, O_RDONLY)) == -1) {
 			goto retry0;
+		}
 
-		if (read(lock_fd, pid, sizeof(pid) - 1) != sizeof(pid) - 1)
+		if (read(lock_fd, pid, sizeof(pid) - 1) != sizeof(pid) - 1) {
 			goto retry0;
+		}
 
 		owner = strtol(pid, &end, 10);
 
-		if (end != pid + 10)
+		if (end != pid + 10) {
 			goto retry0;
+		}
 
-		if (kill(owner, 0) == 0 || errno != ESRCH)
+		if (kill(owner, 0) == 0 || errno != ESRCH) {
 			goto retry0;
+		}
 
-		if (unlink(lock_name) != 0)
+		if (unlink(lock_name) != 0) {
 			goto retry0;
+		}
 
 		goto begin;
 	}
@@ -148,17 +157,21 @@ begin:
 
 	/* Bind to abstract socket */
 	addr.sun_path[0] = '\0';
-	snprintf(addr.sun_path + 1, sizeof(addr.sun_path) - 1, SOCKET_FMT, xserver.display);
-	if ((xserver.abstract_fd = open_socket(&addr)) < 0)
+	snprintf(addr.sun_path + 1, sizeof(addr.sun_path) - 1, SOCKET_FMT,
+	         xserver.display);
+	if ((xserver.abstract_fd = open_socket(&addr)) < 0) {
 		goto retry1;
+	}
 
 	/* Bind to unix socket */
 	mkdir(SOCKET_DIR, 0777);
 	snprintf(addr.sun_path, sizeof(addr.sun_path), SOCKET_FMT, xserver.display);
-	if ((xserver.unix_fd = open_socket(&addr)) < 0)
+	if ((xserver.unix_fd = open_socket(&addr)) < 0) {
 		goto retry2;
+	}
 
-	snprintf(xserver.display_name, sizeof(xserver.display_name), ":%d", xserver.display);
+	snprintf(xserver.display_name, sizeof(xserver.display_name), ":%d",
+	         xserver.display);
 	setenv("DISPLAY", xserver.display_name, true);
 
 	return true;
@@ -196,12 +209,13 @@ handle_usr1(int signal_number, void *data)
 }
 
 static void
-handle_client_destroy(struct wl_listener *listener, void *data) {
+handle_client_destroy(struct wl_listener *listener, void *data)
+{
 	swc_xserver.client = NULL;
 }
 
 static struct wl_listener client_destroy_listener = {
-	.notify = handle_client_destroy,
+    .notify = handle_client_destroy,
 };
 
 bool
@@ -215,7 +229,8 @@ xserver_initialize(void)
 		goto error0;
 	}
 
-	xserver.usr1_source = wl_event_loop_add_signal(swc.event_loop, SIGUSR1, &handle_usr1, NULL);
+	xserver.usr1_source =
+	    wl_event_loop_add_signal(swc.event_loop, SIGUSR1, &handle_usr1, NULL);
 
 	if (!xserver.usr1_source) {
 		ERROR("Failed to create SIGUSR1 event source\n");
@@ -234,56 +249,57 @@ xserver_initialize(void)
 		goto error3;
 	}
 
-	if (!(swc_xserver.client = wl_client_create(swc.display, wl[0])))
+	if (!(swc_xserver.client = wl_client_create(swc.display, wl[0]))) {
 		goto error4;
+	}
 
-	wl_client_add_destroy_listener(swc_xserver.client, &client_destroy_listener);
+	wl_client_add_destroy_listener(swc_xserver.client,
+	                               &client_destroy_listener);
 	xserver.wm_fd = wm[0];
 
 	/* Start the X server */
 	switch (fork()) {
 	case 0: {
-		int fds[] = { wl[1], wm[1], xserver.abstract_fd, xserver.unix_fd };
+		int fds[] = {wl[1], wm[1], xserver.abstract_fd, xserver.unix_fd};
 		char strings[ARRAY_LENGTH(fds)][16];
 		unsigned index;
-		struct sigaction action = {.sa_handler = SIG_IGN };
+		struct sigaction action = {.sa_handler = SIG_IGN};
 
-		/* Unset the FD_CLOEXEC flag on the FDs that will get passed to Xwayland. */
+		/* Unset the FD_CLOEXEC flag on the FDs that will get passed to
+		 * Xwayland. */
 		for (index = 0; index < ARRAY_LENGTH(fds); ++index) {
 			if (fcntl(fds[index], F_SETFD, 0) != 0) {
 				ERROR("fcntl() failed: %s\n", strerror(errno));
 				goto fail;
 			}
 
-			if (snprintf(strings[index], sizeof(strings[index]), "%d", fds[index]) >= sizeof(strings[index])) {
+			if (snprintf(strings[index], sizeof(strings[index]), "%d",
+			             fds[index]) >= sizeof(strings[index])) {
 				ERROR("FD is too large\n");
 				goto fail;
 			}
 		}
 
-		/* Ignore the USR1 signal so that Xwayland will send a USR1 signal to the
-		 * parent process (us) after it finishes initializing. See Xserver(1) for
-		 * more details. */
+		/* Ignore the USR1 signal so that Xwayland will send a USR1 signal to
+		 * the parent process (us) after it finishes initializing. See
+		 * Xserver(1) for more details. */
 		if (sigaction(SIGUSR1, &action, NULL) != 0) {
-			ERROR("Failed to set SIGUSR1 handler to SIG_IGN: %s\n", strerror(errno));
+			ERROR("Failed to set SIGUSR1 handler to SIG_IGN: %s\n",
+			      strerror(errno));
 			goto fail;
 		}
 
 		setenv("WAYLAND_SOCKET", strings[0], true);
-		execlp("Xwayland", "Xwayland",
-		       xserver.display_name,
-		       "-rootless",
-		       "-terminate",
-		       "-listen", strings[2],
-		       "-listen", strings[3],
-		       "-wm", strings[1],
-		       NULL);
+		execlp("Xwayland", "Xwayland", xserver.display_name, "-rootless",
+		       "-terminate", "-listen", strings[2], "-listen", strings[3],
+		       "-wm", strings[1], NULL);
 
 	fail:
 		exit(EXIT_FAILURE);
 	}
 	case -1:
-		ERROR("fork() failed when trying to start X server: %s\n", strerror(errno));
+		ERROR("fork() failed when trying to start X server: %s\n",
+		      strerror(errno));
 		goto error5;
 	}
 
@@ -311,9 +327,11 @@ error0:
 void
 xserver_finalize(void)
 {
-	if (xserver.xwm_initialized)
+	if (xserver.xwm_initialized) {
 		xwm_finalize();
-	if (swc_xserver.client)
+	}
+	if (swc_xserver.client) {
 		wl_client_destroy(swc_xserver.client);
+	}
 	close_display();
 }

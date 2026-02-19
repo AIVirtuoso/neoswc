@@ -26,8 +26,8 @@
 
 #include "view.h"
 
-#include <stdbool.h>
 #include <pixman.h>
+#include <stdbool.h>
 #include <wayland-server.h>
 
 struct screen;
@@ -46,9 +46,12 @@ struct swc_compositor {
 	} signal;
 };
 
-bool compositor_initialize(void);
-void compositor_finalize(void);
-void compositor_damage_all(void);
+bool
+compositor_initialize(void);
+void
+compositor_finalize(void);
+void
+compositor_damage_all(void);
 
 struct compositor_view {
 	struct view base;
@@ -74,11 +77,11 @@ struct compositor_view {
 		uint32_t outcolor;
 
 		bool damaged_border1;
-		
+
 		/* sir, a second border has hit the compositor! */
 		uint32_t inwidth;
 		uint32_t incolor;
-	
+
 		bool damaged_border2;
 	} border;
 
@@ -86,34 +89,49 @@ struct compositor_view {
 	struct wl_signal destroy_signal;
 };
 
-struct compositor_view *compositor_create_view(struct surface *surface);
+struct compositor_view *
+compositor_create_view(struct surface *surface);
 
-void compositor_view_destroy(struct compositor_view *view);
+void
+compositor_view_destroy(struct compositor_view *view);
 
 /**
  * Returns view as a compositor_view, or NULL if view is not a compositor_view.
  */
-struct compositor_view *compositor_view(struct view *view);
+struct compositor_view *
+compositor_view(struct view *view);
 
-void compositor_view_set_parent(struct compositor_view *view, struct compositor_view *parent);
-void compositor_view_restack(struct compositor_view *view, struct compositor_view *sibling, bool above);
+void
+compositor_view_set_parent(struct compositor_view *view,
+                           struct compositor_view *parent);
+void
+compositor_view_restack(struct compositor_view *view,
+                        struct compositor_view *sibling, bool above);
 
-void compositor_view_show(struct compositor_view *view);
-void compositor_view_hide(struct compositor_view *view);
+void
+compositor_view_show(struct compositor_view *view);
+void
+compositor_view_hide(struct compositor_view *view);
 
-void compositor_view_set_border_color(struct compositor_view *view, uint32_t outcolor, uint32_t incolor);
-void compositor_view_set_border_width(struct compositor_view *view, uint32_t outwidth, uint32_t inwidth);
+void
+compositor_view_set_border_color(struct compositor_view *view,
+                                 uint32_t outcolor, uint32_t incolor);
+void
+compositor_view_set_border_width(struct compositor_view *view,
+                                 uint32_t outwidth, uint32_t inwidth);
 
 /**
  * get the current composited buffer for a screen for screenshotss.
  * returns null if no buffer
  */
-struct wld_buffer *compositor_get_buffer(struct screen *screen);
+struct wld_buffer *
+compositor_get_buffer(struct screen *screen);
 
 /**
- * render the compositor scene into a shm buffer 
+ * render the compositor scene into a shm buffer
  * caller must free with wld_buffer_unreference()
  */
-struct wld_buffer *compositor_render_to_shm(struct screen *screen);
+struct wld_buffer *
+compositor_render_to_shm(struct screen *screen);
 
 #endif

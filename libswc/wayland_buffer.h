@@ -29,7 +29,10 @@
 struct wl_client;
 struct wl_resource;
 
-struct wld_buffer *wayland_buffer_get(struct wl_resource *resource);
-struct wl_resource *wayland_buffer_create_resource(struct wl_client *client, uint32_t version, uint32_t id, struct wld_buffer *buffer);
+struct wld_buffer *
+wayland_buffer_get(struct wl_resource *resource);
+struct wl_resource *
+wayland_buffer_create_resource(struct wl_client *client, uint32_t version,
+                               uint32_t id, struct wld_buffer *buffer);
 
 #endif

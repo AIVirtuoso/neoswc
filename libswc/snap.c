@@ -1,19 +1,19 @@
 #include "snap.h"
-#include "internal.h"
-#include "screen.h"
 #include "compositor.h"
-#include "shm.h"
-#include "seat.h"
+#include "internal.h"
 #include "pointer.h"
+#include "screen.h"
+#include "seat.h"
+#include "shm.h"
 
+#include "swc_snap-server-protocol.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <wayland-server.h>
 #include <wld/wld.h>
-#include "swc_snap-server-protocol.h"
 
 static void
 ppm(int fd, const uint8_t *pixels, uint32_t width, uint32_t height,
@@ -34,18 +34,14 @@ ppm(int fd, const uint8_t *pixels, uint32_t width, uint32_t height,
 
 		for (uint32_t x = 0; x < width; x++) {
 			uint32_t pixel = row[x];
-			unsigned char rgb[3] = {
-				(pixel >> 16) & 0xFF,  
-				(pixel >> 8) & 0xFF,   
-				pixel & 0xFF           
-			};
+			unsigned char rgb[3] = {(pixel >> 16) & 0xFF, (pixel >> 8) & 0xFF,
+			                        pixel & 0xFF};
 			fwrite(rgb, 1, 3, f);
 		}
 	}
 
-	fclose(f); 
+	fclose(f);
 }
-
 
 /* get cursor */
 static void
@@ -59,15 +55,18 @@ cursor(uint8_t *dst, uint32_t dst_width, uint32_t dst_height,
 	int32_t src_x = 0, src_y = 0;
 	uint32_t copy_w, copy_h;
 
-	if (!pointer || !pointer->cursor.buffer || !pointer->cursor.view.buffer)
+	if (!pointer || !pointer->cursor.buffer || !pointer->cursor.view.buffer) {
 		return;
+	}
 
-	if (!(pointer->cursor.view.screens & screen_mask(screen)))
+	if (!(pointer->cursor.view.screens & screen_mask(screen))) {
 		return;
+	}
 
 	cursor_buf = pointer->cursor.buffer;
-	if (!wld_map(cursor_buf) || !cursor_buf->map)
+	if (!wld_map(cursor_buf) || !cursor_buf->map) {
 		return;
+	}
 
 	dst_x = pointer->cursor.view.geometry.x - screen->base.geometry.x;
 	dst_y = pointer->cursor.view.geometry.y - screen->base.geometry.y;
@@ -89,24 +88,32 @@ cursor(uint8_t *dst, uint32_t dst_width, uint32_t dst_height,
 	}
 
 	copy_w = cursor_buf->width - (uint32_t)src_x;
-	if (copy_w > dst_width - (uint32_t)dst_x)
+	if (copy_w > dst_width - (uint32_t)dst_x) {
 		copy_w = dst_width - (uint32_t)dst_x;
+	}
 	copy_h = cursor_buf->height - (uint32_t)src_y;
-	if (copy_h > dst_height - (uint32_t)dst_y)
+	if (copy_h > dst_height - (uint32_t)dst_y) {
 		copy_h = dst_height - (uint32_t)dst_y;
+	}
 
 	src = cursor_buf->map;
 
 	for (uint32_t y = 0; y < copy_h; y++) {
-		const uint32_t *src_row = (const uint32_t *)(src + ((size_t)(src_y + (int32_t)y) * cursor_buf->pitch)) + src_x;
-		uint32_t *dst_row = (uint32_t *)(dst + ((size_t)(dst_y + (int32_t)y) * dst_pitch)) + dst_x;
+		const uint32_t *src_row =
+		    (const uint32_t *)(src + ((size_t)(src_y + (int32_t)y) *
+		                              cursor_buf->pitch)) +
+		    src_x;
+		uint32_t *dst_row =
+		    (uint32_t *)(dst + ((size_t)(dst_y + (int32_t)y) * dst_pitch)) +
+		    dst_x;
 
 		for (uint32_t x = 0; x < copy_w; x++) {
 			uint32_t src_px = src_row[x];
 			uint32_t a = src_px >> 24;
 
-			if (a == 0)
+			if (a == 0) {
 				continue;
+			}
 			if (a == 255) {
 				dst_row[x] = 0xFF000000 | (src_px & 0x00FFFFFF);
 				continue;
@@ -114,9 +121,12 @@ cursor(uint8_t *dst, uint32_t dst_width, uint32_t dst_height,
 
 			uint32_t dst_px = dst_row[x];
 			uint32_t inv = 255 - a;
-			uint32_t r = ((src_px >> 16) & 0xFF) + ((((dst_px >> 16) & 0xFF) * inv + 127) / 255);
-			uint32_t g = ((src_px >> 8) & 0xFF) + ((((dst_px >> 8) & 0xFF) * inv + 127) / 255);
-			uint32_t b = (src_px & 0xFF) + (((dst_px & 0xFF) * inv + 127) / 255);
+			uint32_t r = ((src_px >> 16) & 0xFF) +
+			             ((((dst_px >> 16) & 0xFF) * inv + 127) / 255);
+			uint32_t g = ((src_px >> 8) & 0xFF) +
+			             ((((dst_px >> 8) & 0xFF) * inv + 127) / 255);
+			uint32_t b =
+			    (src_px & 0xFF) + (((dst_px & 0xFF) * inv + 127) / 255);
 
 			dst_row[x] = 0xFF000000 | (r << 16) | (g << 8) | b;
 		}
@@ -170,7 +180,7 @@ capture(struct wl_client *client, struct wl_resource *resource, int32_t fd)
 }
 
 static const struct swc_snap_interface snap_impl = {
-	.capture = capture,
+    .capture = capture,
 };
 
 static void

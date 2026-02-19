@@ -28,41 +28,51 @@
 #include "seat.h"
 
 static void
-create_data_source(struct wl_client *client, struct wl_resource *resource, uint32_t id)
+create_data_source(struct wl_client *client, struct wl_resource *resource,
+                   uint32_t id)
 {
-	if (!data_source_new(client, wl_resource_get_version(resource), id))
+	if (!data_source_new(client, wl_resource_get_version(resource), id)) {
 		wl_resource_post_no_memory(resource);
+	}
 }
 
 static void
-get_data_device(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *seat_resource)
+get_data_device(struct wl_client *client, struct wl_resource *resource,
+                uint32_t id, struct wl_resource *seat_resource)
 {
 	struct swc_seat *seat = wl_resource_get_user_data(seat_resource);
 
-	if (!data_device_bind(seat->data_device, client, wl_resource_get_version(resource), id))
+	if (!data_device_bind(seat->data_device, client,
+	                      wl_resource_get_version(resource), id)) {
 		wl_resource_post_no_memory(resource);
+	}
 }
 
-static const struct wl_data_device_manager_interface data_device_manager_impl = {
-	.create_data_source = create_data_source,
-	.get_data_device = get_data_device,
+static const struct wl_data_device_manager_interface data_device_manager_impl =
+    {
+        .create_data_source = create_data_source,
+        .get_data_device = get_data_device,
 };
 
 static void
-bind_data_device_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+bind_data_device_manager(struct wl_client *client, void *data, uint32_t version,
+                         uint32_t id)
 {
 	struct wl_resource *resource;
 
-	resource = wl_resource_create(client, &wl_data_device_manager_interface, version, id);
+	resource = wl_resource_create(client, &wl_data_device_manager_interface,
+	                              version, id);
 	if (!resource) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(resource, &data_device_manager_impl, NULL, NULL);
+	wl_resource_set_implementation(resource, &data_device_manager_impl, NULL,
+	                               NULL);
 }
 
 struct wl_global *
 data_device_manager_create(struct wl_display *display)
 {
-	return wl_global_create(display, &wl_data_device_manager_interface, 2, NULL, &bind_data_device_manager);
+	return wl_global_create(display, &wl_data_device_manager_interface, 2, NULL,
+	                        &bind_data_device_manager);
 }

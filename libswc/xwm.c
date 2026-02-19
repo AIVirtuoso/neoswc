@@ -69,14 +69,12 @@ static struct {
 		xcb_intern_atom_cookie_t cookie;
 		xcb_atom_t value;
 	} atoms[4];
-} xwm = {
-	.atoms = {
-		[ATOM_WL_SURFACE_ID] = {"WL_SURFACE_ID"},
-		[ATOM_WM_DELETE_WINDOW] = {"WM_DELETE_WINDOW"},
-		[ATOM_WM_PROTOCOLS] = {"WM_PROTOCOLS"},
-		[ATOM_WM_S0] = {"WM_S0"},
-	}
-};
+} xwm = {.atoms = {
+             [ATOM_WL_SURFACE_ID] = {"WL_SURFACE_ID"},
+             [ATOM_WM_DELETE_WINDOW] = {"WM_DELETE_WINDOW"},
+             [ATOM_WM_PROTOCOLS] = {"WM_PROTOCOLS"},
+             [ATOM_WM_S0] = {"WM_S0"},
+         }};
 
 static void
 update_name(struct xwl_window *xwl_window)
@@ -86,8 +84,10 @@ update_name(struct xwl_window *xwl_window)
 
 	wm_name_cookie = xcb_ewmh_get_wm_name(&xwm.ewmh, xwl_window->id);
 
-	if (xcb_ewmh_get_wm_name_reply(&xwm.ewmh, wm_name_cookie, &wm_name_reply, NULL)) {
-		window_set_title(&xwl_window->window, wm_name_reply.strings, wm_name_reply.strings_len);
+	if (xcb_ewmh_get_wm_name_reply(&xwm.ewmh, wm_name_cookie, &wm_name_reply,
+	                               NULL)) {
+		window_set_title(&xwl_window->window, wm_name_reply.strings,
+		                 wm_name_reply.strings_len);
 		xcb_ewmh_get_utf8_strings_reply_wipe(&wm_name_reply);
 	} else {
 		window_set_title(&xwl_window->window, NULL, 0);
@@ -101,15 +101,19 @@ update_protocols(struct xwl_window *xwl_window)
 	xcb_icccm_get_wm_protocols_reply_t reply;
 	unsigned index;
 
-	cookie = xcb_icccm_get_wm_protocols(xwm.connection, xwl_window->id, xwm.atoms[ATOM_WM_PROTOCOLS].value);
+	cookie = xcb_icccm_get_wm_protocols(xwm.connection, xwl_window->id,
+	                                    xwm.atoms[ATOM_WM_PROTOCOLS].value);
 	xwl_window->supports_delete = true;
 
-	if (!xcb_icccm_get_wm_protocols_reply(xwm.connection, cookie, &reply, NULL))
+	if (!xcb_icccm_get_wm_protocols_reply(xwm.connection, cookie, &reply,
+	                                      NULL)) {
 		return;
+	}
 
 	for (index = 0; index < reply.atoms_len; ++index) {
-		if (reply.atoms[index] == xwm.atoms[ATOM_WM_DELETE_WINDOW].value)
+		if (reply.atoms[index] == xwm.atoms[ATOM_WM_DELETE_WINDOW].value) {
 			xwl_window->supports_delete = true;
+		}
 	}
 
 	xcb_icccm_get_wm_protocols_reply_wipe(&reply);
@@ -120,9 +124,11 @@ find_window(struct wl_list *list, xcb_window_t id)
 {
 	struct xwl_window *window;
 
-	wl_list_for_each (window, list, link) {
-		if (window->id == id)
+	wl_list_for_each(window, list, link)
+	{
+		if (window->id == id) {
 			return window;
+		}
 	}
 
 	return NULL;
@@ -133,9 +139,11 @@ find_window_by_surface_id(struct wl_list *list, uint32_t id)
 {
 	struct xwl_window *window;
 
-	wl_list_for_each (window, list, link) {
-		if (window->surface_id == id)
+	wl_list_for_each(window, list, link)
+	{
+		if (window->surface_id == id) {
 			return window;
+		}
 	}
 
 	return NULL;
@@ -175,7 +183,8 @@ focus(struct window *window)
 {
 	struct xwl_window *xwl_window = wl_container_of(window, xwl_window, window);
 
-	xcb_set_input_focus(xwm.connection, XCB_INPUT_FOCUS_NONE, xwl_window->id, XCB_CURRENT_TIME);
+	xcb_set_input_focus(xwm.connection, XCB_INPUT_FOCUS_NONE, xwl_window->id,
+	                    XCB_CURRENT_TIME);
 	xcb_flush(xwm.connection);
 	xwm.focus = xwl_window;
 }
@@ -185,12 +194,13 @@ unfocus(struct window *window)
 {
 	struct xwl_window *xwl_window = wl_container_of(window, xwl_window, window);
 
-	/* If the window we are unfocusing is the latest xwl_window to be focused, we
-	 * know we have transitioned to some other window type, so the X11 focus can
-	 * be set to XCB_NONE. Otherwise, we have transitioned to another X11 window,
-	 * and the X11 focus has already been updated. */
+	/* If the window we are unfocusing is the latest xwl_window to be focused,
+	 * we know we have transitioned to some other window type, so the X11 focus
+	 * can be set to XCB_NONE. Otherwise, we have transitioned to another X11
+	 * window, and the X11 focus has already been updated. */
 	if (xwl_window == xwm.focus) {
-		xcb_set_input_focus(xwm.connection, XCB_INPUT_FOCUS_NONE, XCB_NONE, XCB_CURRENT_TIME);
+		xcb_set_input_focus(xwm.connection, XCB_INPUT_FOCUS_NONE, XCB_NONE,
+		                    XCB_CURRENT_TIME);
 		xcb_flush(xwm.connection);
 	}
 }
@@ -202,17 +212,19 @@ close_(struct window *window)
 
 	if (xwl_window->supports_delete) {
 		xcb_client_message_event_t event = {
-			.response_type = XCB_CLIENT_MESSAGE,
-			.format = 32,
-			.window = xwl_window->id,
-			.type = xwm.atoms[ATOM_WM_PROTOCOLS].value,
-			.data.data32 = {
-				xwm.atoms[ATOM_WM_DELETE_WINDOW].value,
-				XCB_CURRENT_TIME,
-			},
+		    .response_type = XCB_CLIENT_MESSAGE,
+		    .format = 32,
+		    .window = xwl_window->id,
+		    .type = xwm.atoms[ATOM_WM_PROTOCOLS].value,
+		    .data.data32 =
+		        {
+		            xwm.atoms[ATOM_WM_DELETE_WINDOW].value,
+		            XCB_CURRENT_TIME,
+		        },
 		};
 
-		xcb_send_event(xwm.connection, false, xwl_window->id, XCB_EVENT_MASK_NO_EVENT, (const char *)&event);
+		xcb_send_event(xwm.connection, false, xwl_window->id,
+		               XCB_EVENT_MASK_NO_EVENT, (const char *)&event);
 	} else {
 		xcb_kill_client(xwm.connection, xwl_window->id);
 	}
@@ -221,20 +233,22 @@ close_(struct window *window)
 }
 
 static const struct window_impl xwl_window_handler = {
-	.move = move,
-	.configure = configure,
-	.focus = focus,
-	.unfocus = unfocus,
-	.close = close_,
+    .move = move,
+    .configure = configure,
+    .focus = focus,
+    .unfocus = unfocus,
+    .close = close_,
 };
 
 static void
 handle_surface_destroy(struct wl_listener *listener, void *data)
 {
-	struct xwl_window *xwl_window = wl_container_of(listener, xwl_window, surface_destroy_listener);
+	struct xwl_window *xwl_window =
+	    wl_container_of(listener, xwl_window, surface_destroy_listener);
 
-	if (xwm.focus == xwl_window)
+	if (xwm.focus == xwl_window) {
 		xwm.focus = NULL;
+	}
 
 	window_finalize(&xwl_window->window);
 	wl_list_remove(&xwl_window->link);
@@ -250,19 +264,23 @@ manage_window(struct xwl_window *xwl_window)
 	xcb_get_geometry_cookie_t geometry_cookie;
 	xcb_get_geometry_reply_t *geometry_reply;
 
-	resource = wl_client_get_object(swc.xserver->client, xwl_window->surface_id);
+	resource =
+	    wl_client_get_object(swc.xserver->client, xwl_window->surface_id);
 
-	if (!resource)
+	if (!resource) {
 		return false;
+	}
 
 	surface = wl_resource_get_user_data(resource);
 	geometry_cookie = xcb_get_geometry(xwm.connection, xwl_window->id);
 
 	window_initialize(&xwl_window->window, &xwl_window_handler, surface);
 	xwl_window->surface_destroy_listener.notify = &handle_surface_destroy;
-	wl_resource_add_destroy_listener(surface->resource, &xwl_window->surface_destroy_listener);
+	wl_resource_add_destroy_listener(surface->resource,
+	                                 &xwl_window->surface_destroy_listener);
 
-	if ((geometry_reply = xcb_get_geometry_reply(xwm.connection, geometry_cookie, NULL))) {
+	if ((geometry_reply =
+	         xcb_get_geometry_reply(xwm.connection, geometry_cookie, NULL))) {
 		view_move(surface->view, geometry_reply->x, geometry_reply->y);
 		free(geometry_reply);
 	}
@@ -274,7 +292,8 @@ manage_window(struct xwl_window *xwl_window)
 
 		mask = XCB_CW_EVENT_MASK;
 		values[0] = XCB_EVENT_MASK_PROPERTY_CHANGE;
-		xcb_change_window_attributes(xwm.connection, xwl_window->id, mask, values);
+		xcb_change_window_attributes(xwm.connection, xwl_window->id, mask,
+		                             values);
 		mask = XCB_CONFIG_WINDOW_BORDER_WIDTH;
 		values[0] = 0;
 		xcb_configure_window(xwm.connection, xwl_window->id, mask, values);
@@ -295,17 +314,18 @@ handle_new_surface(struct wl_listener *listener, void *data)
 	struct surface *surface = data;
 	struct xwl_window *window;
 
-	window = find_window_by_surface_id(&xwm.unpaired_windows, wl_resource_get_id(surface->resource));
+	window = find_window_by_surface_id(&xwm.unpaired_windows,
+	                                   wl_resource_get_id(surface->resource));
 
-	if (!window)
+	if (!window) {
 		return;
+	}
 
 	manage_window(window);
 }
 
-static struct wl_listener new_surface_listener = {
-	.notify = &handle_new_surface
-};
+static struct wl_listener new_surface_listener = {.notify =
+                                                      &handle_new_surface};
 
 /* X event handlers */
 static void
@@ -313,8 +333,9 @@ create_notify(xcb_create_notify_event_t *event)
 {
 	struct xwl_window *xwl_window;
 
-	if (!(xwl_window = malloc(sizeof *xwl_window)))
+	if (!(xwl_window = malloc(sizeof *xwl_window))) {
 		return;
+	}
 
 	xwl_window->id = event->window;
 	xwl_window->surface_id = 0;
@@ -330,7 +351,8 @@ destroy_notify(xcb_destroy_notify_event_t *event)
 	if ((xwl_window = find_window(&xwm.windows, event->window))) {
 		wl_list_remove(&xwl_window->surface_destroy_listener.link);
 		window_finalize(&xwl_window->window);
-	} else if (!(xwl_window = find_window(&xwm.unpaired_windows, event->window))) {
+	} else if (!(xwl_window =
+	                 find_window(&xwm.unpaired_windows, event->window))) {
 		return;
 	}
 
@@ -354,13 +376,16 @@ property_notify(xcb_property_notify_event_t *event)
 {
 	struct xwl_window *xwl_window;
 
-	if (!(xwl_window = find_window(&xwm.windows, event->window)))
+	if (!(xwl_window = find_window(&xwm.windows, event->window))) {
 		return;
+	}
 
-	if (event->atom == xwm.ewmh._NET_WM_NAME && event->state == XCB_PROPERTY_NEW_VALUE)
+	if (event->atom == xwm.ewmh._NET_WM_NAME &&
+	    event->state == XCB_PROPERTY_NEW_VALUE) {
 		update_name(xwl_window);
-	else if (event->atom == xwm.atoms[ATOM_WM_PROTOCOLS].value)
+	} else if (event->atom == xwm.atoms[ATOM_WM_PROTOCOLS].value) {
 		update_protocols(xwl_window);
+	}
 }
 
 static void
@@ -369,8 +394,9 @@ client_message(xcb_client_message_event_t *event)
 	if (event->type == xwm.atoms[ATOM_WL_SURFACE_ID].value) {
 		struct xwl_window *xwl_window;
 
-		if (!(xwl_window = find_window(&xwm.unpaired_windows, event->window)))
+		if (!(xwl_window = find_window(&xwm.unpaired_windows, event->window))) {
 			return;
+		}
 
 		xwl_window->surface_id = event->data.data32[0];
 		manage_window(xwl_window);
@@ -446,7 +472,8 @@ xwm_initialize(int fd)
 
 	for (index = 0; index < ARRAY_LENGTH(xwm.atoms); ++index) {
 		name = xwm.atoms[index].name;
-		xwm.atoms[index].cookie = xcb_intern_atom(xwm.connection, 0, strlen(name), name);
+		xwm.atoms[index].cookie =
+		    xcb_intern_atom(xwm.connection, 0, strlen(name), name);
 	}
 
 	setup = xcb_get_setup(xwm.connection);
@@ -455,10 +482,13 @@ xwm_initialize(int fd)
 
 	/* Try to select for substructure redirect. */
 	mask = XCB_CW_EVENT_MASK;
-	values[0] = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
-	change_attributes_cookie = xcb_change_window_attributes(xwm.connection, xwm.screen->root, mask, values);
+	values[0] = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
+	            XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+	change_attributes_cookie = xcb_change_window_attributes(
+	    xwm.connection, xwm.screen->root, mask, values);
 
-	xwm.source = wl_event_loop_add_fd(swc.event_loop, fd, WL_EVENT_READABLE, &connection_data, NULL);
+	xwm.source = wl_event_loop_add_fd(swc.event_loop, fd, WL_EVENT_READABLE,
+	                                  &connection_data, NULL);
 	wl_list_init(&xwm.windows);
 	wl_list_init(&xwm.unpaired_windows);
 
@@ -467,14 +497,16 @@ xwm_initialize(int fd)
 		goto error2;
 	}
 
-	composite_extension = xcb_get_extension_data(xwm.connection, &xcb_composite_id);
+	composite_extension =
+	    xcb_get_extension_data(xwm.connection, &xcb_composite_id);
 
 	if (!composite_extension->present) {
 		ERROR("xwm: X server does not have composite extension\n");
 		goto error3;
 	}
 
-	redirect_subwindows_cookie = xcb_composite_redirect_subwindows_checked(xwm.connection, xwm.screen->root, XCB_COMPOSITE_REDIRECT_MANUAL);
+	redirect_subwindows_cookie = xcb_composite_redirect_subwindows_checked(
+	    xwm.connection, xwm.screen->root, XCB_COMPOSITE_REDIRECT_MANUAL);
 
 	if ((error = xcb_request_check(xwm.connection, change_attributes_cookie))) {
 		ERROR("xwm: Another window manager is running\n");
@@ -482,16 +514,17 @@ xwm_initialize(int fd)
 		goto error3;
 	}
 
-	if ((error = xcb_request_check(xwm.connection, redirect_subwindows_cookie))) {
+	if ((error =
+	         xcb_request_check(xwm.connection, redirect_subwindows_cookie))) {
 		ERROR("xwm: Could not redirect subwindows of root for compositing\n");
 		free(error);
 		goto error3;
 	}
 
 	xwm.window = xcb_generate_id(xwm.connection);
-	xcb_create_window(xwm.connection, 0, xwm.window, xwm.screen->root,
-	                  0, 0, 1, 1, 0, XCB_WINDOW_CLASS_INPUT_ONLY,
-	                  XCB_COPY_FROM_PARENT, 0, NULL);
+	xcb_create_window(xwm.connection, 0, xwm.window, xwm.screen->root, 0, 0, 1,
+	                  1, 0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT,
+	                  0, NULL);
 
 	xcb_ewmh_init_atoms_replies(&xwm.ewmh, ewmh_cookies, &error);
 
@@ -501,7 +534,8 @@ xwm_initialize(int fd)
 	}
 
 	for (index = 0; index < ARRAY_LENGTH(xwm.atoms); ++index) {
-		atom_reply = xcb_intern_atom_reply(xwm.connection, xwm.atoms[index].cookie, &error);
+		atom_reply = xcb_intern_atom_reply(xwm.connection,
+		                                   xwm.atoms[index].cookie, &error);
 
 		if (error) {
 			ERROR("xwm: Failed to get atom reply: %u\n", error->error_code);
@@ -512,7 +546,8 @@ xwm_initialize(int fd)
 		free(atom_reply);
 	}
 
-	xcb_set_selection_owner(xwm.connection, xwm.window, xwm.atoms[ATOM_WM_S0].value, XCB_CURRENT_TIME);
+	xcb_set_selection_owner(xwm.connection, xwm.window,
+	                        xwm.atoms[ATOM_WM_S0].value, XCB_CURRENT_TIME);
 	xcb_flush(xwm.connection);
 
 	wl_signal_add(&swc.compositor->signal.new_surface, &new_surface_listener);

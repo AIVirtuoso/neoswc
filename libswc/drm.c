@@ -32,21 +32,21 @@
 #include "util.h"
 #include "wayland_buffer.h"
 
+#include "wayland-drm-server-protocol.h"
 #include <dirent.h>
+#include <drm.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <drm.h>
-#include <xf86drm.h>
-#include <wld/wld.h>
-#include <wld/drm.h>
 #include <wayland-server.h>
-#include "wayland-drm-server-protocol.h"
+#include <wld/drm.h>
+#include <wld/wld.h>
+#include <xf86drm.h>
 
 struct swc_drm swc_drm;
 
@@ -59,49 +59,58 @@ static struct {
 } drm;
 
 static void
-authenticate(struct wl_client *client, struct wl_resource *resource, uint32_t magic)
+authenticate(struct wl_client *client, struct wl_resource *resource,
+             uint32_t magic)
 {
 	wl_drm_send_authenticated(resource);
 }
 
 static void
-create_buffer(struct wl_client *client, struct wl_resource *resource, uint32_t id,
-              uint32_t name, int32_t width, int32_t height, uint32_t stride, uint32_t format)
+create_buffer(struct wl_client *client, struct wl_resource *resource,
+              uint32_t id, uint32_t name, int32_t width, int32_t height,
+              uint32_t stride, uint32_t format)
 {
-	wl_resource_post_error(resource, WL_DRM_ERROR_INVALID_NAME, "GEM names are not supported, use a PRIME fd instead");
+	wl_resource_post_error(
+	    resource, WL_DRM_ERROR_INVALID_NAME,
+	    "GEM names are not supported, use a PRIME fd instead");
 }
 
 static void
-create_planar_buffer(struct wl_client *client, struct wl_resource *resource, uint32_t id,
-                     uint32_t name, int32_t width, int32_t height, uint32_t format,
-                     int32_t offset0, int32_t stride0,
-                     int32_t offset1, int32_t stride1,
-                     int32_t offset2, int32_t stride2)
+create_planar_buffer(struct wl_client *client, struct wl_resource *resource,
+                     uint32_t id, uint32_t name, int32_t width, int32_t height,
+                     uint32_t format, int32_t offset0, int32_t stride0,
+                     int32_t offset1, int32_t stride1, int32_t offset2,
+                     int32_t stride2)
 {
-	wl_resource_post_error(resource, WL_DRM_ERROR_INVALID_FORMAT, "planar buffers are not supported\n");
+	wl_resource_post_error(resource, WL_DRM_ERROR_INVALID_FORMAT,
+	                       "planar buffers are not supported\n");
 }
 
 static void
-create_prime_buffer(struct wl_client *client, struct wl_resource *resource, uint32_t id,
-                    int32_t fd, int32_t width, int32_t height, uint32_t format,
-                    int32_t offset0, int32_t stride0,
-                    int32_t offset1, int32_t stride1,
-                    int32_t offset2, int32_t stride2)
+create_prime_buffer(struct wl_client *client, struct wl_resource *resource,
+                    uint32_t id, int32_t fd, int32_t width, int32_t height,
+                    uint32_t format, int32_t offset0, int32_t stride0,
+                    int32_t offset1, int32_t stride1, int32_t offset2,
+                    int32_t stride2)
 {
 	struct wld_buffer *buffer;
 	struct wl_resource *buffer_resource;
-	union wld_object object = { .i = fd };
+	union wld_object object = {.i = fd};
 
-	buffer = wld_import_buffer(swc.drm->context, WLD_DRM_OBJECT_PRIME_FD, object, width, height, format, stride0);
+	buffer = wld_import_buffer(swc.drm->context, WLD_DRM_OBJECT_PRIME_FD,
+	                           object, width, height, format, stride0);
 	close(fd);
 
-	if (!buffer)
+	if (!buffer) {
 		goto error0;
+	}
 
-	buffer_resource = wayland_buffer_create_resource(client, wl_resource_get_version(resource), id, buffer);
+	buffer_resource = wayland_buffer_create_resource(
+	    client, wl_resource_get_version(resource), id, buffer);
 
-	if (!buffer_resource)
+	if (!buffer_resource) {
 		goto error1;
+	}
 
 	return;
 
@@ -112,10 +121,10 @@ error0:
 }
 
 static const struct wl_drm_interface drm_impl = {
-	.authenticate = authenticate,
-	.create_buffer = create_buffer,
-	.create_planar_buffer = create_planar_buffer,
-	.create_prime_buffer = create_prime_buffer,
+    .authenticate = authenticate,
+    .create_buffer = create_buffer,
+    .create_planar_buffer = create_planar_buffer,
+    .create_prime_buffer = create_prime_buffer,
 };
 
 static int
@@ -136,11 +145,13 @@ find_primary_drm_device(char *path, size_t size)
 
 	num_cards = scandir("/dev/dri", &cards, &select_card, &alphasort);
 
-	if (num_cards == -1)
+	if (num_cards == -1) {
 		return false;
+	}
 
 	for (index = 0; index < num_cards; ++index) {
-		snprintf(path, size, "/sys/class/drm/%s/device/boot_vga", cards[index]->d_name);
+		snprintf(path, size, "/sys/class/drm/%s/device/boot_vga",
+		         cards[index]->d_name);
 
 		if ((file = fopen(path, "r"))) {
 			ret = fscanf(file, "%hhu", &boot_vga);
@@ -154,26 +165,30 @@ find_primary_drm_device(char *path, size_t size)
 			}
 		}
 
-		if (!card)
+		if (!card) {
 			card = cards[index];
-		else
+		} else {
 			free(cards[index]);
+		}
 	}
 
 	free(cards);
 
-	if (!card)
+	if (!card) {
 		return false;
+	}
 
-	if (snprintf(path, size, "/dev/dri/%s", card->d_name) >= size)
+	if (snprintf(path, size, "/dev/dri/%s", card->d_name) >= size) {
 		return false;
+	}
 
 	free(card);
 	return true;
 }
 
 static bool
-find_available_crtc(drmModeRes *resources, drmModeConnector *connector, uint32_t taken_crtcs, int *crtc_index)
+find_available_crtc(drmModeRes *resources, drmModeConnector *connector,
+                    uint32_t taken_crtcs, int *crtc_index)
 {
 	int i, j;
 	uint32_t possible_crtcs;
@@ -196,12 +211,14 @@ find_available_crtc(drmModeRes *resources, drmModeConnector *connector, uint32_t
 }
 
 static void
-handle_vblank(int fd, unsigned int sequence, unsigned int sec, unsigned int usec, void *data)
+handle_vblank(int fd, unsigned int sequence, unsigned int sec,
+              unsigned int usec, void *data)
 {
 }
 
 static void
-handle_page_flip(int fd, unsigned int sequence, unsigned int sec, unsigned int usec, unsigned int crtc_id, void *data)
+handle_page_flip(int fd, unsigned int sequence, unsigned int sec,
+                 unsigned int usec, unsigned int crtc_id, void *data)
 {
 	struct drm_handler *handler = data;
 
@@ -209,9 +226,9 @@ handle_page_flip(int fd, unsigned int sequence, unsigned int sec, unsigned int u
 }
 
 static drmEventContext event_context = {
-	.version = DRM_EVENT_CONTEXT_VERSION,
-	.vblank_handler = handle_vblank,
-	.page_flip_handler2 = handle_page_flip,
+    .version = DRM_EVENT_CONTEXT_VERSION,
+    .vblank_handler = handle_vblank,
+    .page_flip_handler2 = handle_page_flip,
 };
 
 static int
@@ -233,8 +250,9 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	}
 	wl_resource_set_implementation(resource, &drm_impl, NULL, NULL);
 
-	if (version >= 2)
+	if (version >= 2) {
 		wl_drm_send_capabilities(resource, WL_DRM_CAPABILITY_PRIME);
+	}
 
 	wl_drm_send_device(resource, drm.path);
 	wl_drm_send_format(resource, WL_DRM_FORMAT_XRGB8888);
@@ -261,11 +279,13 @@ drm_initialize(void)
 		ERROR("Could not enable DRM universal planes\n");
 		goto error1;
 	}
-	if (drmGetCap(swc.drm->fd, DRM_CAP_CURSOR_WIDTH, &val) < 0)
+	if (drmGetCap(swc.drm->fd, DRM_CAP_CURSOR_WIDTH, &val) < 0) {
 		val = 64;
+	}
 	swc.drm->cursor_w = val;
-	if (drmGetCap(swc.drm->fd, DRM_CAP_CURSOR_HEIGHT, &val) < 0)
+	if (drmGetCap(swc.drm->fd, DRM_CAP_CURSOR_HEIGHT, &val) < 0) {
 		val = 64;
+	}
 	swc.drm->cursor_h = val;
 
 	drm.path = drmGetRenderDeviceNameFromFd(swc.drm->fd);
@@ -284,7 +304,8 @@ drm_initialize(void)
 		goto error2;
 	}
 
-	drm.event_source = wl_event_loop_add_fd(swc.event_loop, swc.drm->fd, WL_EVENT_READABLE, &handle_data, NULL);
+	drm.event_source = wl_event_loop_add_fd(
+	    swc.event_loop, swc.drm->fd, WL_EVENT_READABLE, &handle_data, NULL);
 
 	if (!drm.event_source) {
 		ERROR("Could not create DRM event source\n");
@@ -292,7 +313,8 @@ drm_initialize(void)
 	}
 
 	if (!wld_drm_is_dumb(swc.drm->context)) {
-		drm.global = wl_global_create(swc.display, &wl_drm_interface, 2, NULL, &bind_drm);
+		drm.global = wl_global_create(swc.display, &wl_drm_interface, 2, NULL,
+		                              &bind_drm);
 		if (!drm.global) {
 			ERROR("Could not create wl_drm global\n");
 			goto error4;
@@ -321,8 +343,9 @@ error0:
 void
 drm_finalize(void)
 {
-	if (drm.global)
+	if (drm.global) {
 		wl_global_destroy(drm.global);
+	}
 	wl_event_source_remove(drm.event_source);
 	wld_destroy_renderer(swc.drm->renderer);
 	wld_destroy_context(swc.drm->context);
@@ -349,8 +372,9 @@ drm_create_screens(struct wl_list *screens)
 	wl_list_init(&planes);
 	for (i = 0; i < plane_ids->count_planes; ++i) {
 		plane = plane_new(plane_ids->planes[i]);
-		if (plane)
+		if (plane) {
 			wl_list_insert(&planes, &plane->link);
+		}
 	}
 	drmModeFreePlaneResources(plane_ids);
 
@@ -359,33 +383,40 @@ drm_create_screens(struct wl_list *screens)
 		ERROR("Could not get DRM resources\n");
 		return false;
 	}
-	for (i = 0; i < resources->count_connectors; ++i, drmModeFreeConnector(connector)) {
+	for (i = 0; i < resources->count_connectors;
+	     ++i, drmModeFreeConnector(connector)) {
 		connector = drmModeGetConnector(swc.drm->fd, resources->connectors[i]);
 
 		if (connector->connection == DRM_MODE_CONNECTED) {
 			int crtc_index;
 
-			if (!find_available_crtc(resources, connector, taken_crtcs, &crtc_index)) {
+			if (!find_available_crtc(resources, connector, taken_crtcs,
+			                         &crtc_index)) {
 				WARNING("Could not find CRTC for connector %d\n", i);
 				continue;
 			}
 
 			cursor_plane = NULL;
-			wl_list_for_each (plane, &planes, link) {
-				if (plane->type == DRM_PLANE_TYPE_CURSOR && plane->possible_crtcs & 1 << crtc_index) {
+			wl_list_for_each(plane, &planes, link)
+			{
+				if (plane->type == DRM_PLANE_TYPE_CURSOR &&
+				    plane->possible_crtcs & 1 << crtc_index) {
 					wl_list_remove(&plane->link);
 					cursor_plane = plane;
 					break;
 				}
 			}
 			if (!cursor_plane) {
-				WARNING("Could not find cursor plane for CRTC %d\n", crtc_index);
+				WARNING("Could not find cursor plane for CRTC %d\n",
+				        crtc_index);
 			}
 
-			if (!(output = output_new(connector)))
+			if (!(output = output_new(connector))) {
 				continue;
+			}
 
-			output->screen = screen_new(resources->crtcs[crtc_index], output, cursor_plane);
+			output->screen =
+			    screen_new(resources->crtcs[crtc_index], output, cursor_plane);
 			output->screen->id = crtc_index;
 			taken_crtcs |= 1 << crtc_index;
 
@@ -397,9 +428,7 @@ drm_create_screens(struct wl_list *screens)
 	return true;
 }
 
-enum {
-	WLD_USER_OBJECT_FRAMEBUFFER = WLD_USER_ID
-};
+enum { WLD_USER_OBJECT_FRAMEBUFFER = WLD_USER_ID };
 
 struct framebuffer {
 	struct wld_exporter exporter;
@@ -408,9 +437,11 @@ struct framebuffer {
 };
 
 static bool
-framebuffer_export(struct wld_exporter *exporter, struct wld_buffer *buffer, uint32_t type, union wld_object *object)
+framebuffer_export(struct wld_exporter *exporter, struct wld_buffer *buffer,
+                   uint32_t type, union wld_object *object)
 {
-	struct framebuffer *framebuffer = wl_container_of(exporter, framebuffer, exporter);
+	struct framebuffer *framebuffer =
+	    wl_container_of(exporter, framebuffer, exporter);
 
 	switch (type) {
 	case WLD_USER_OBJECT_FRAMEBUFFER:
@@ -426,7 +457,8 @@ framebuffer_export(struct wld_exporter *exporter, struct wld_buffer *buffer, uin
 static void
 framebuffer_destroy(struct wld_destructor *destructor)
 {
-	struct framebuffer *framebuffer = wl_container_of(destructor, framebuffer, destructor);
+	struct framebuffer *framebuffer =
+	    wl_container_of(destructor, framebuffer, destructor);
 
 	drmModeRmFB(swc.drm->fd, framebuffer->id);
 	free(framebuffer);
@@ -439,22 +471,26 @@ drm_get_framebuffer(struct wld_buffer *buffer)
 	union wld_object object;
 	int ret;
 
-	if (!buffer)
+	if (!buffer) {
 		return 0;
+	}
 
-	if (wld_export(buffer, WLD_USER_OBJECT_FRAMEBUFFER, &object))
+	if (wld_export(buffer, WLD_USER_OBJECT_FRAMEBUFFER, &object)) {
 		return object.u32;
+	}
 
 	if (!wld_export(buffer, WLD_DRM_OBJECT_HANDLE, &object)) {
 		ERROR("Could not get buffer handle\n");
 		return 0;
 	}
 
-	if (!(framebuffer = malloc(sizeof(*framebuffer))))
+	if (!(framebuffer = malloc(sizeof(*framebuffer)))) {
 		return 0;
+	}
 
-	ret = drmModeAddFB2(swc.drm->fd, buffer->width, buffer->height, buffer->format,
-	                    (uint32_t[4]){object.u32}, (uint32_t[4]){buffer->pitch}, (uint32_t[4]){0},
+	ret = drmModeAddFB2(swc.drm->fd, buffer->width, buffer->height,
+	                    buffer->format, (uint32_t[4]){object.u32},
+	                    (uint32_t[4]){buffer->pitch}, (uint32_t[4]){0},
 	                    &framebuffer->id, 0);
 	if (ret < 0) {
 		free(framebuffer);

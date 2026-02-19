@@ -24,8 +24,8 @@
 #include "xdg_decoration.h"
 #include "util.h"
 
-#include <wayland-server.h>
 #include "xdg-decoration-unstable-v1-server-protocol.h"
+#include <wayland-server.h>
 
 struct xdg_toplevel_decoration {
 	struct wl_resource *resource;
@@ -43,15 +43,16 @@ unset_mode(struct wl_client *client, struct wl_resource *resource)
 }
 
 static const struct zxdg_toplevel_decoration_v1_interface decoration_impl = {
-	.destroy = destroy_resource,
-	.set_mode = set_mode,
-	.unset_mode = unset_mode,
+    .destroy = destroy_resource,
+    .set_mode = set_mode,
+    .unset_mode = unset_mode,
 };
 
 static void
 handle_toplevel_destroy(struct wl_listener *listener, void *data)
 {
-	struct xdg_toplevel_decoration *decoration = wl_container_of(listener, decoration, toplevel_destroy_listener);
+	struct xdg_toplevel_decoration *decoration =
+	    wl_container_of(listener, decoration, toplevel_destroy_listener);
 
 	wl_resource_destroy(decoration->resource);
 }
@@ -59,27 +60,36 @@ handle_toplevel_destroy(struct wl_listener *listener, void *data)
 static void
 decoration_destroy(struct wl_resource *resource)
 {
-	struct xdg_toplevel_decoration *decoration = wl_resource_get_user_data(resource);
+	struct xdg_toplevel_decoration *decoration =
+	    wl_resource_get_user_data(resource);
 
 	wl_list_remove(&decoration->toplevel_destroy_listener.link);
 	free(decoration);
 }
 
 static void
-get_toplevel_decoration(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *toplevel_resource)
+get_toplevel_decoration(struct wl_client *client, struct wl_resource *resource,
+                        uint32_t id, struct wl_resource *toplevel_resource)
 {
 	struct xdg_toplevel_decoration *decoration;
 
 	decoration = malloc(sizeof(*decoration));
-	if (!decoration)
+	if (!decoration) {
 		goto error0;
-	decoration->resource = wl_resource_create(client, &zxdg_toplevel_decoration_v1_interface, wl_resource_get_version(resource), id);
-	if (!decoration->resource)
+	}
+	decoration->resource =
+	    wl_resource_create(client, &zxdg_toplevel_decoration_v1_interface,
+	                       wl_resource_get_version(resource), id);
+	if (!decoration->resource) {
 		goto error1;
+	}
 	decoration->toplevel_destroy_listener.notify = &handle_toplevel_destroy;
-	wl_resource_add_destroy_listener(toplevel_resource, &decoration->toplevel_destroy_listener);
-	wl_resource_set_implementation(decoration->resource, &decoration_impl, decoration, decoration_destroy);
-	zxdg_toplevel_decoration_v1_send_configure(decoration->resource, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	wl_resource_add_destroy_listener(toplevel_resource,
+	                                 &decoration->toplevel_destroy_listener);
+	wl_resource_set_implementation(decoration->resource, &decoration_impl,
+	                               decoration, decoration_destroy);
+	zxdg_toplevel_decoration_v1_send_configure(
+	    decoration->resource, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	return;
 
 error1:
@@ -88,26 +98,31 @@ error0:
 	wl_resource_post_no_memory(resource);
 }
 
-static const struct zxdg_decoration_manager_v1_interface decoration_manager_impl = {
-	.destroy = destroy_resource,
-	.get_toplevel_decoration = get_toplevel_decoration,
+static const struct zxdg_decoration_manager_v1_interface
+    decoration_manager_impl = {
+        .destroy = destroy_resource,
+        .get_toplevel_decoration = get_toplevel_decoration,
 };
 
 static void
-bind_decoration_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+bind_decoration_manager(struct wl_client *client, void *data, uint32_t version,
+                        uint32_t id)
 {
 	struct wl_resource *resource;
 
-	resource = wl_resource_create(client, &zxdg_decoration_manager_v1_interface, version, id);
+	resource = wl_resource_create(client, &zxdg_decoration_manager_v1_interface,
+	                              version, id);
 	if (!resource) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(resource, &decoration_manager_impl, NULL, NULL);
+	wl_resource_set_implementation(resource, &decoration_manager_impl, NULL,
+	                               NULL);
 }
 
 struct wl_global *
 xdg_decoration_manager_create(struct wl_display *display)
 {
-	return wl_global_create(display, &zxdg_decoration_manager_v1_interface, 1, NULL, &bind_decoration_manager);
+	return wl_global_create(display, &zxdg_decoration_manager_v1_interface, 1,
+	                        NULL, &bind_decoration_manager);
 }

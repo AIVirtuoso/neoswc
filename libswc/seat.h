@@ -32,7 +32,9 @@ struct swc_seat {
 	struct data_device *data_device;
 };
 
-struct swc_seat *seat_create(struct wl_display *display, const char *name);
-void seat_destroy(struct swc_seat *seat);
+struct swc_seat *
+seat_create(struct wl_display *display, const char *name);
+void
+seat_destroy(struct swc_seat *seat);
 
 #endif
