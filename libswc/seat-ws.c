@@ -311,7 +311,6 @@ initialize_wscons(struct seat *seat)
 	kbd_t encoding;
 	unsigned i;
 
-
 	if ((seat->mouse_fd =
 	         launch_open_device("/dev/wsmouse", O_RDWR | O_NONBLOCK)) == -1) {
 		ERROR("Could not open mouse device\n");

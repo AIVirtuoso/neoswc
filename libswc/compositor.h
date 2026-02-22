@@ -64,7 +64,7 @@ struct compositor_view {
 
 	/* Whether or not the view is visible (mapped). */
 	bool visible;
-	
+
 	/* Whether or not to make it always be on top of other windows */
 	bool always_top;
 
@@ -137,7 +137,9 @@ compositor_get_buffer(struct screen *screen);
 struct wld_buffer *
 compositor_render_to_shm(struct screen *screen);
 
-void raise_window(struct compositor_view *view);
-void raise_window_top(struct compositor_view *view);
+void
+raise_window(struct compositor_view *view);
+void
+raise_window_top(struct compositor_view *view);
 
 #endif

@@ -143,7 +143,7 @@ set_offset(struct wl_client *client, struct wl_resource *resource,
 
 static void
 set_y_offset(struct wl_client *client, struct wl_resource *resource,
-           uint32_t offset)
+             uint32_t offset)
 {
 	struct panel *panel = wl_resource_get_user_data(resource);
 
@@ -168,7 +168,7 @@ set_strut(struct wl_client *client, struct wl_resource *resource, uint32_t size,
 static const struct swc_panel_interface panel_impl = {
     .dock = dock,
     .set_offset = set_offset,
-		.set_y_offset = set_y_offset,
+    .set_y_offset = set_y_offset,
     .set_strut = set_strut,
 };
 

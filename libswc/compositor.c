@@ -755,14 +755,28 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 		}
 
 		/* maths     zoom position and size */
-		float zoomed_x = (geom->x - cx) * zoom + width / 2.0f;
-		float zoomed_y = (geom->y - cy) * zoom + height / 2.0f;
-		float zoomed_w = geom->width * zoom;
-		float zoomed_h = geom->height * zoom;
+		float zoomed_x, zoomed_y, zoomed_w, zoomed_h;
+		float border_out, border_in, total_border;
 
-		float border_out = view->border.outwidth * zoom;
-		float border_in = view->border.inwidth * zoom;
-		float total_border = border_out + border_in;
+		if (view->always_top) {
+			zoomed_x = geom->x - screen_x;
+			zoomed_y = geom->y - screen_y;
+			zoomed_w = geom->width;
+			zoomed_h = geom->height;
+
+			border_out = view->border.outwidth;
+			border_in = view->border.inwidth;
+		} else {
+			zoomed_x = (geom->x - cx) * zoom + width / 2.0f;
+			zoomed_y = (geom->y - cy) * zoom + height / 2.0f;
+			zoomed_w = geom->width * zoom;
+			zoomed_h = geom->height * zoom;
+
+			border_out = view->border.outwidth * zoom;
+			border_in = view->border.inwidth * zoom;
+		}
+
+		total_border = border_out + border_in;
 
 		if (zoomed_x + zoomed_w + total_border < 0 ||
 		    zoomed_x - total_border >= (int32_t)width ||
@@ -834,12 +848,15 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 		    src->map, src->pitch);
 
 		if (src_img) {
-			pixman_transform_t transform;
-			pixman_transform_init_identity(&transform);
-			pixman_fixed_t scale = pixman_double_to_fixed(1.0 / zoom);
-			pixman_transform_scale(&transform, NULL, scale, scale);
-			pixman_image_set_transform(src_img, &transform);
-			pixman_image_set_filter(src_img, PIXMAN_FILTER_BILINEAR, NULL, 0);
+			if (!view->always_top) {
+				pixman_transform_t transform;
+				pixman_transform_init_identity(&transform);
+				pixman_fixed_t scale = pixman_double_to_fixed(1.0 / zoom);
+				pixman_transform_scale(&transform, NULL, scale, scale);
+				pixman_image_set_transform(src_img, &transform);
+				pixman_image_set_filter(src_img, PIXMAN_FILTER_BILINEAR, NULL,
+				                        0);
+			}
 
 			pixman_image_composite32(PIXMAN_OP_OVER, src_img, NULL, dst_img, 0,
 			                         0, 0, 0, (int32_t)zoomed_x,
@@ -1034,7 +1051,7 @@ raise_window(struct compositor_view *view)
 		if (!other->visible) {
 			continue;
 		}
-		
+
 		if (other->always_top) {
 			insert_after = &other->link;
 			continue;
@@ -1294,7 +1311,7 @@ compositor_view_show(struct compositor_view *view)
 
 	view->visible = true;
 	view_update_screens(&view->base);
-	
+
 	if (view->window) {
 		raise_window(view);
 	}
