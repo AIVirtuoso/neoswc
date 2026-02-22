@@ -1011,7 +1011,7 @@ window_view(struct compositor_view *view)
 	return (view && view->window) ? view : NULL;
 }
 
-static void
+void
 raise_window(struct compositor_view *view)
 {
 	struct compositor_view *other, *top_window;
@@ -1027,7 +1027,16 @@ raise_window(struct compositor_view *view)
 	insert_after = &compositor.views;
 	wl_list_for_each(other, &compositor.views, link)
 	{
+		if (other == view) {
+			continue;
+		}
+
 		if (!other->visible) {
+			continue;
+		}
+		
+		if (other->always_top) {
+			insert_after = &other->link;
 			continue;
 		}
 
@@ -1053,6 +1062,15 @@ raise_window(struct compositor_view *view)
 	                           span_u32(view->extents.x1, view->extents.x2),
 	                           span_u32(view->extents.y1, view->extents.y2));
 	schedule_updates(screens);
+}
+
+void
+raise_window_top(struct compositor_view *view)
+{
+	wl_list_remove(&view->link);
+	wl_list_insert(&compositor.views, &view->link);
+	damage_view(view);
+	schedule_updates(view->base.screens);
 }
 
 EXPORT struct swc_window *
@@ -1182,6 +1200,7 @@ compositor_create_view(struct surface *surface)
 	view->buffer_offset_x = 0;
 	view->buffer_offset_y = 0;
 	view->visible = false;
+	view->always_top = false;
 	view->extents.x1 = 0;
 	view->extents.y1 = 0;
 	view->extents.x2 = 0;
@@ -1275,6 +1294,10 @@ compositor_view_show(struct compositor_view *view)
 
 	view->visible = true;
 	view_update_screens(&view->base);
+	
+	if (view->window) {
+		raise_window(view);
+	}
 
 	/* Assume worst-case no clipping until we draw the next frame (in case the
 	 * surface gets moved before that. */

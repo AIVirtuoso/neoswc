@@ -119,6 +119,7 @@ dock(struct wl_client *client, struct wl_resource *resource, uint32_t edge,
 
 	update_position(panel);
 	compositor_view_show(panel->view);
+	raise_window_top(panel->view);
 	wl_list_insert(&screen->modifiers, &panel->modifier.link);
 
 	if (focus) {
@@ -268,6 +269,7 @@ panel_new(struct wl_client *client, uint32_t version, uint32_t id,
 	                               &destroy_panel);
 	panel->surface_destroy_listener.notify = &handle_surface_destroy;
 	panel->view_handler.impl = &view_handler_impl;
+	panel->view->always_top = true;
 	panel->modifier.modify = &modify;
 	panel->screen = NULL;
 	panel->offset = 0;
