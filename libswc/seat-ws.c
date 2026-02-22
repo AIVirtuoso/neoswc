@@ -311,12 +311,6 @@ initialize_wscons(struct seat *seat)
 	kbd_t encoding;
 	unsigned i;
 
-#ifdef WSMOUSE_EVENT_VERSION
-	int mouse_ver = WSMOUSE_EVENT_VERSION;
-#endif
-#ifdef WSKBDIO_EVENT_VERSION
-	int kbd_ver = WSKBDIO_EVENT_VERSION;
-#endif
 
 	if ((seat->mouse_fd =
 	         launch_open_device("/dev/wsmouse", O_RDWR | O_NONBLOCK)) == -1) {
