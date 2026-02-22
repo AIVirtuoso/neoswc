@@ -15,31 +15,49 @@
 #include <wayland-server.h>
 #include <wld/wld.h>
 
+static unsigned char *ppm_rgb_buffer;
+static size_t ppm_rgb_buffer_size;
+
 static void
 ppm(int fd, const uint8_t *pixels, uint32_t width, uint32_t height,
     uint32_t pitch)
 {
 	FILE *f = fdopen(fd, "wb");
+	size_t rgb_size = (size_t)width * height * 3;
+
 	if (!f) {
 		close(fd);
 		return;
+	}
+
+	if (rgb_size > ppm_rgb_buffer_size) {
+		unsigned char *buffer = realloc(ppm_rgb_buffer, rgb_size);
+		if (!buffer) {
+			fclose(f);
+			return;
+		}
+
+		ppm_rgb_buffer = buffer;
+		ppm_rgb_buffer_size = rgb_size;
 	}
 
 	/* ppm  header */
 	fprintf(f, "P6\n%u %u\n255\n", width, height);
 
 	/* pixel data convert argb8888 to rgb) */
+	unsigned char *dst = ppm_rgb_buffer;
 	for (uint32_t y = 0; y < height; y++) {
 		const uint32_t *row = (const uint32_t *)(pixels + ((size_t)y * pitch));
 
 		for (uint32_t x = 0; x < width; x++) {
 			uint32_t pixel = row[x];
-			unsigned char rgb[3] = {(pixel >> 16) & 0xFF, (pixel >> 8) & 0xFF,
-			                        pixel & 0xFF};
-			fwrite(rgb, 1, 3, f);
+			*dst++ = (pixel >> 16) & 0xFF;
+			*dst++ = (pixel >> 8) & 0xFF;
+			*dst++ = pixel & 0xFF;
 		}
 	}
 
+	fwrite(ppm_rgb_buffer, 1, rgb_size, f);
 	fclose(f);
 }
 
