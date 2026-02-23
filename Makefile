@@ -97,6 +97,7 @@ PROTO_EXTENSIONS= \
 	protocol/server-decoration.xml \
 	protocol/swc.xml \
 	protocol/swc_snap.xml \
+	protocol/swc_select.xml \
 	protocol/swc_wallpaper.xml \
 	protocol/wayland-drm.xml \
 	${WAYLAND_PROTOCOLS_DATADIR}/stable/xdg-shell/xdg-shell.xml \
@@ -125,6 +126,7 @@ PROTO_GEN_C= \
 	protocol/server-decoration-protocol.c \
 	protocol/swc-protocol.c \
 	protocol/swc_snap-protocol.c \
+	protocol/swc_select-protocol.c \
 	protocol/swc_wallpaper-protocol.c \
 	protocol/wayland-drm-protocol.c \
 	protocol/xdg-decoration-unstable-v1-protocol.c \
@@ -139,6 +141,8 @@ PROTO_GEN_H= \
 	protocol/swc-client-protocol.h \
 	protocol/swc_snap-server-protocol.h \
 	protocol/swc_snap-client-protocol.h \
+	protocol/swc_select-server-protocol.h \
+	protocol/swc_select-client-protocol.h \
 	protocol/swc_wallpaper-server-protocol.h \
 	protocol/swc_wallpaper-client-protocol.h \
 	protocol/wayland-drm-server-protocol.h \
@@ -205,6 +209,7 @@ SWC_SOURCES= \
 	libswc/subcompositor.c \
 	libswc/subsurface.c \
 	libswc/surface.c \
+	libswc/select.c \
 	libswc/swc.c \
 	libswc/util.c \
 	libswc/view.c \
@@ -217,6 +222,7 @@ SWC_SOURCES= \
 	protocol/server-decoration-protocol.c \
 	protocol/swc-protocol.c \
 	protocol/swc_snap-protocol.c \
+	protocol/swc_select-protocol.c \
 	protocol/swc_wallpaper-protocol.c \
 	protocol/wayland-drm-protocol.c \
 	protocol/xdg-decoration-unstable-v1-protocol.c \

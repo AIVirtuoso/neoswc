@@ -50,6 +50,7 @@ struct swc {
 	struct wl_global *panel_manager;
 	struct wl_global *shell;
 	struct wl_global *snap_manager;
+	struct wl_global *select_manager;
 	struct wl_global *subcompositor;
 	struct wl_global *wallpaper_manager;
 	struct wl_global *xdg_decoration_manager;

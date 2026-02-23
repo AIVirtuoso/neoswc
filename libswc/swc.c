@@ -35,6 +35,7 @@
 #include "pointer.h"
 #include "screen.h"
 #include "seat.h"
+#include "select.h"
 #include "shell.h"
 #include "shm.h"
 #include "snap.h"
@@ -251,10 +252,18 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 	}
 #endif
 
+	swc.select_manager = select_manager_create(display);
+	if (!swc.select_manager) {
+		ERROR("Could not initialize select manager\n");
+		goto error17;
+	}
+
 	setup_compositor();
 
 	return true;
 
+error17:
+	wl_global_destroy(swc.select_manager);
 #ifdef ENABLE_XWAYLAND
 error16:
 	wl_global_destroy(swc.wallpaper_manager);
