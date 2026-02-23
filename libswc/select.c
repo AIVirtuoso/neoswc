@@ -3,6 +3,7 @@
 #include "select.h"
 #include "swc_select-server-protocol.h"
 
+#include "internal.h"
 #include "compositor.h"
 #include "pointer.h"
 #include "seat.h"
