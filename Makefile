@@ -68,6 +68,8 @@ PACKAGES+= xcb xcb-composite xcb-ewmh xcb-icccm
 
 PKG_CFLAGS!= ${PKG_CONFIG} --cflags ${PACKAGES}
 PKG_LIBS!= ${PKG_CONFIG} --libs ${PACKAGES}
+WAYLAND_CLIENT_CFLAGS!= ${PKG_CONFIG} --cflags wayland-client
+WAYLAND_CLIENT_LIBS!= ${PKG_CONFIG} --libs wayland-client
 WAYLAND_PROTOCOLS_DATADIR!= ${PKG_CONFIG} --variable=pkgdatadir wayland-protocols
 
 CPPFLAGS+= -D_GNU_SOURCE
@@ -267,6 +269,20 @@ libswc/libswc.a: libswc/libswc.o
 	@echo "  AR $@"
 	@${AR} cru ${.TARGET} ${.ALLSRC}
 
+EXTRA_CAPTURE_TOOLS= \
+	extra/swcsnap
+
+.for ex in ${EXTRA_CAPTURE_TOOLS}
+${ex:R}.o: ${ex}.c protocol/swc_snap-client-protocol.h
+	@echo "  CC $@"
+	@${CC} ${CPPFLAGS} ${CFLAGS} ${WAYLAND_CLIENT_CFLAGS} -I . -I protocol \
+	    -c -o ${.TARGET} ${.IMPSRC}
+.endfor
+
+extra/swcsnap: extra/swcsnap.o protocol/swc_snap-protocol.o
+	@echo "  CCLD $@"
+	@${CC} ${LDFLAGS} -o ${.TARGET} ${.ALLSRC} ${WAYLAND_CLIENT_LIBS}
+
 swc.pc: swc.pc.in
 	@echo "  GEN $@"
 	@sed -e 's:@VERSION@:${VERSION}:' \
@@ -281,6 +297,7 @@ swc.pc: swc.pc.in
 .PHONY: all build clean install
 all: build
 build: libswc/libswc.a launch/swc-launch cursor/cursor_data.h swc.pc
+build: ${EXTRA_CAPTURE_TOOLS}
 
 install: build
 	install -d ${DESTDIR}${BINDIR}
@@ -289,6 +306,7 @@ install: build
 	install -d ${DESTDIR}${DATADIR}/swc
 	install -d ${DESTDIR}${PKGCONFIGDIR}
 	install -m 4755 launch/swc-launch ${DESTDIR}${BINDIR}/
+	install -m 755 extra/swcsnap ${DESTDIR}${BINDIR}/
 	install -m 644 libswc/libswc.a ${DESTDIR}${LIBDIR}/
 	install -m 644 libswc/swc.h ${DESTDIR}${INCLUDEDIR}/
 	install -m 644 ${PROTO_GEN_H} ${DESTDIR}${INCLUDEDIR}/
@@ -301,4 +319,5 @@ clean:
 	      cursor/cursor_data.h cursor/convert_font cursor/convert_font.o \
 	      launch/*.o launch/swc-launch \
 	      libswc/*.o libswc/libswc-internal.o libswc/libswc.o libswc/libswc.a \
-	      protocol/*.o
+	      protocol/*.o \
+	      extra/swcsnap.o extra/swcsnap

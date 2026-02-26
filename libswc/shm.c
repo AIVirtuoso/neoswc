@@ -46,6 +46,7 @@ struct pool {
 	void *data;
 	uint32_t size;
 	int fd;
+	bool writable;
 	unsigned references;
 };
 
@@ -53,6 +54,41 @@ struct pool_reference {
 	struct wld_destructor destructor;
 	struct pool *pool;
 };
+
+struct shm_buffer_record {
+	struct wl_list link;
+	struct wl_listener destroy_listener;
+	struct wl_resource *resource;
+	struct pool *pool;
+	uint32_t offset;
+	int32_t width;
+	int32_t height;
+	int32_t stride;
+	uint32_t format;
+};
+
+static struct wl_list shm_buffer_records;
+static bool shm_buffer_records_initialized;
+
+static void
+ensure_shm_buffer_records(void)
+{
+	if (!shm_buffer_records_initialized) {
+		wl_list_init(&shm_buffer_records);
+		shm_buffer_records_initialized = true;
+	}
+}
+
+static void
+handle_shm_buffer_resource_destroy(struct wl_listener *listener, void *data)
+{
+	struct shm_buffer_record *record =
+	    wl_container_of(listener, record, destroy_listener);
+	(void)data;
+
+	wl_list_remove(&record->link);
+	free(record);
+}
 
 static void *
 swc_mremap(struct pool *pool, void *oldp, size_t oldsize, size_t newsize)
@@ -121,6 +157,7 @@ create_buffer(struct wl_client *client, struct wl_resource *resource,
 {
 	struct pool *pool = wl_resource_get_user_data(resource);
 	struct pool_reference *reference;
+	struct shm_buffer_record *record = NULL;
 	struct wld_buffer *buffer;
 	struct wl_resource *buffer_resource;
 	union wld_object object;
@@ -147,8 +184,24 @@ create_buffer(struct wl_client *client, struct wl_resource *resource,
 		goto error1;
 	}
 
-	if (!(reference = malloc(sizeof(*reference)))) {
+	ensure_shm_buffer_records();
+	record = malloc(sizeof(*record));
+	if (!record) {
 		goto error2;
+	}
+	record->resource = buffer_resource;
+	record->pool = pool;
+	record->offset = (uint32_t)offset;
+	record->width = width;
+	record->height = height;
+	record->stride = stride;
+	record->format = format;
+	record->destroy_listener.notify = &handle_shm_buffer_resource_destroy;
+	wl_resource_add_destroy_listener(buffer_resource, &record->destroy_listener);
+	wl_list_insert(&shm_buffer_records, &record->link);
+
+	if (!(reference = malloc(sizeof(*reference)))) {
+		goto error3;
 	}
 
 	reference->pool = pool;
@@ -158,6 +211,12 @@ create_buffer(struct wl_client *client, struct wl_resource *resource,
 
 	return;
 
+error3:
+	if (record) {
+		wl_list_remove(&record->destroy_listener.link);
+		wl_list_remove(&record->link);
+		free(record);
+	}
 error2:
 	wl_resource_destroy(buffer_resource);
 error1:
@@ -230,11 +289,16 @@ create_pool(struct wl_client *client, struct wl_resource *resource, uint32_t id,
 	}
 	wl_resource_set_implementation(pool->resource, &shm_pool_impl, pool,
 	                               &destroy_pool_resource);
-	pool->data = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	pool->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	pool->writable = true;
 	if (pool->data == MAP_FAILED) {
-		wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD,
-		                       "mmap failed: %s", strerror(errno));
-		goto error2;
+		pool->data = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+		pool->writable = false;
+		if (pool->data == MAP_FAILED) {
+			wl_resource_post_error(resource, WL_SHM_ERROR_INVALID_FD,
+			                       "mmap failed: %s", strerror(errno));
+			goto error2;
+		}
 	}
 	/* close(fd); */
 	pool->size = size;
@@ -311,4 +375,41 @@ shm_destroy(struct swc_shm *shm)
 	wld_destroy_renderer(shm->renderer);
 	wld_destroy_context(shm->context);
 	free(shm);
+}
+
+bool
+shm_buffer_get_info(struct wl_resource *resource, struct swc_shm_buffer_info *info)
+{
+	struct shm_buffer_record *record;
+	uint64_t size;
+
+	if (!shm_buffer_records_initialized) {
+		return false;
+	}
+
+	wl_list_for_each(record, &shm_buffer_records, link)
+	{
+		if (record->resource != resource) {
+			continue;
+		}
+
+		if (record->width < 0 || record->height < 0 || record->stride < 0) {
+			return false;
+		}
+
+		size = (uint64_t)record->stride * (uint64_t)record->height;
+		if ((uint64_t)record->offset + size > record->pool->size) {
+			return false;
+		}
+
+		info->data = (uint8_t *)record->pool->data + record->offset;
+		info->width = record->width;
+		info->height = record->height;
+		info->stride = record->stride;
+		info->format = record->format;
+		info->writable = record->pool->writable;
+		return true;
+	}
+
+	return false;
 }

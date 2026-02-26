@@ -334,6 +334,54 @@ repaint_view(struct target *target, struct compositor_view *view,
 }
 
 static void
+draw_overlays(struct wld_renderer *renderer, const struct swc_rectangle *target_geom)
+{
+	int32_t tx = (int32_t)target_geom->width;
+	int32_t ty = (int32_t)target_geom->height;
+
+/* draw box as 4 rectangles with wld */
+#define CLAMP_LOW(v, lo) ((v) < (lo) ? (lo) : (v))
+#define CLAMP_HIGH(v, hi) ((v) > (hi) ? (hi) : (v))
+#define DRAW_CLIPPED(rx, ry, rw, rh, clr)                                     \
+	do {                                                                       \
+		int32_t _x1 = CLAMP_LOW((rx), 0);                                      \
+		int32_t _y1 = CLAMP_LOW((ry), 0);                                      \
+		int32_t _x2 = CLAMP_HIGH((rx) + (int32_t)(rw), tx);                    \
+		int32_t _y2 = CLAMP_HIGH((ry) + (int32_t)(rh), ty);                    \
+		if (_x2 > _x1 && _y2 > _y1)                                            \
+			wld_fill_rectangle(renderer, (clr), _x1, _y1,                      \
+			                   (uint32_t)(_x2 - _x1), (uint32_t)(_y2 - _y1)); \
+	} while (0)
+
+	if (overlay.active && overlay.border_width > 0) {
+		int32_t x = overlay.x - target_geom->x;
+		int32_t y = overlay.y - target_geom->y;
+		uint32_t w = overlay.width, h = overlay.height,
+		         bw = overlay.border_width;
+
+		if (w > 0 && h > 0) {
+			if (bw > w) {
+				bw = w;
+			}
+			if (bw > h) {
+				bw = h;
+			}
+
+			DRAW_CLIPPED(x, y, (int32_t)w, (int32_t)bw, overlay.color);
+			DRAW_CLIPPED(x, y + (int32_t)h - (int32_t)bw, (int32_t)w,
+			             (int32_t)bw, overlay.color);
+			DRAW_CLIPPED(x, y, (int32_t)bw, (int32_t)h, overlay.color);
+			DRAW_CLIPPED(x + (int32_t)w - (int32_t)bw, y, (int32_t)bw,
+			             (int32_t)h, overlay.color);
+		}
+	}
+
+#undef DRAW_CLIPPED
+#undef CLAMP_HIGH
+#undef CLAMP_LOW
+}
+
+static void
 renderer_repaint(struct target *target, pixman_region32_t *damage,
                  pixman_region32_t *base_damage, struct wl_list *views,
                  struct screen *screen)
@@ -369,48 +417,7 @@ renderer_repaint(struct target *target, pixman_region32_t *damage,
 		}
 	}
 
-	if (overlay.active && overlay.border_width > 0) {
-		int32_t x = overlay.x - target_geom->x;
-		int32_t y = overlay.y - target_geom->y;
-		uint32_t w = overlay.width, h = overlay.height,
-		         bw = overlay.border_width;
-		int32_t tx = (int32_t)target_geom->width;
-		int32_t ty = (int32_t)target_geom->height;
-
-/* draw box as 4 rectangles with wld */
-#define CLAMP_LOW(v, lo) ((v) < (lo) ? (lo) : (v))
-#define CLAMP_HIGH(v, hi) ((v) > (hi) ? (hi) : (v))
-#define DRAW_CLIPPED(rx, ry, rw, rh)                                           \
-	do {                                                                       \
-		int32_t _x1 = CLAMP_LOW((rx), 0);                                      \
-		int32_t _y1 = CLAMP_LOW((ry), 0);                                      \
-		int32_t _x2 = CLAMP_HIGH((rx) + (int32_t)(rw), tx);                    \
-		int32_t _y2 = CLAMP_HIGH((ry) + (int32_t)(rh), ty);                    \
-		if (_x2 > _x1 && _y2 > _y1)                                            \
-			wld_fill_rectangle(swc.drm->renderer, overlay.color, _x1, _y1,     \
-			                   (uint32_t)(_x2 - _x1), (uint32_t)(_y2 - _y1));  \
-	} while (0)
-
-		if (w > 0 && h > 0) {
-			if (bw > w) {
-				bw = w;
-			}
-			if (bw > h) {
-				bw = h;
-			}
-
-			DRAW_CLIPPED(x, y, (int32_t)w, (int32_t)bw); /* top */
-			DRAW_CLIPPED(x, y + (int32_t)h - (int32_t)bw, (int32_t)w,
-			             (int32_t)bw);                   /* bottom */
-			DRAW_CLIPPED(x, y, (int32_t)bw, (int32_t)h); /* left */
-			DRAW_CLIPPED(x + (int32_t)w - (int32_t)bw, y, (int32_t)bw,
-			             (int32_t)h); /* right */
-		}
-
-#undef DRAW_CLIPPED
-#undef CLAMP_HIGH
-#undef CLAMP_LOW
-	}
+	draw_overlays(swc.drm->renderer, target_geom);
 
 	wld_flush(swc.drm->renderer);
 }
@@ -701,7 +708,7 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 	struct wld_buffer *background;
 
 	struct wld_buffer *buffer = wld_create_buffer(
-	    swc.shm->context, width, height, WLD_FORMAT_XRGB8888, WLD_FLAG_MAP);
+	    swc.shm->context, width, height, WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
 	if (!buffer) {
 		return NULL;
 	}
@@ -1754,6 +1761,10 @@ compositor_get_buffer(struct screen *screen)
 struct wld_buffer *
 compositor_render_to_shm(struct screen *screen)
 {
+	if (compositor.zoom != 1.0f) {
+		return render_zoomed_to_shm(screen, compositor.zoom);
+	}
+
 	uint32_t width = screen->base.geometry.width;
 	uint32_t height = screen->base.geometry.height;
 	struct wld_buffer *buffer;
@@ -1870,6 +1881,8 @@ compositor_render_to_shm(struct screen *screen)
 			pixman_region32_fini(&in_border);
 		}
 	}
+
+	draw_overlays(swc.shm->renderer, &screen->base.geometry);
 
 	wld_flush(swc.shm->renderer);
 	pixman_region32_fini(&region);

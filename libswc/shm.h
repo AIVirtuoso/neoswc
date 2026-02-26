@@ -24,7 +24,11 @@
 #ifndef SWC_SHM_H
 #define SWC_SHM_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 struct wl_display;
+struct wl_resource;
 
 struct swc_shm {
 	struct wl_global *global;
@@ -32,9 +36,20 @@ struct swc_shm {
 	struct wld_renderer *renderer;
 };
 
+struct swc_shm_buffer_info {
+	void *data;
+	int32_t width;
+	int32_t height;
+	int32_t stride;
+	uint32_t format;
+	bool writable;
+};
+
 struct swc_shm *
 shm_create(struct wl_display *display);
 void
 shm_destroy(struct swc_shm *shm);
+bool
+shm_buffer_get_info(struct wl_resource *resource, struct swc_shm_buffer_info *info);
 
 #endif

@@ -5,61 +5,14 @@
 #include "screen.h"
 #include "seat.h"
 #include "shm.h"
+#include "util.h"
 
 #include "swc_snap-server-protocol.h"
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <time.h>
 #include <wayland-server.h>
 #include <wld/wld.h>
-
-static unsigned char *ppm_rgb_buffer;
-static size_t ppm_rgb_buffer_size;
-
-static void
-ppm(int fd, const uint8_t *pixels, uint32_t width, uint32_t height,
-    uint32_t pitch)
-{
-	FILE *f = fdopen(fd, "wb");
-	size_t rgb_size = (size_t)width * height * 3;
-
-	if (!f) {
-		close(fd);
-		return;
-	}
-
-	if (rgb_size > ppm_rgb_buffer_size) {
-		unsigned char *buffer = realloc(ppm_rgb_buffer, rgb_size);
-		if (!buffer) {
-			fclose(f);
-			return;
-		}
-
-		ppm_rgb_buffer = buffer;
-		ppm_rgb_buffer_size = rgb_size;
-	}
-
-	/* ppm  header */
-	fprintf(f, "P6\n%u %u\n255\n", width, height);
-
-	/* pixel data convert argb8888 to rgb) */
-	unsigned char *dst = ppm_rgb_buffer;
-	for (uint32_t y = 0; y < height; y++) {
-		const uint32_t *row = (const uint32_t *)(pixels + ((size_t)y * pitch));
-
-		for (uint32_t x = 0; x < width; x++) {
-			uint32_t pixel = row[x];
-			*dst++ = (pixel >> 16) & 0xFF;
-			*dst++ = (pixel >> 8) & 0xFF;
-			*dst++ = pixel & 0xFF;
-		}
-	}
-
-	fwrite(ppm_rgb_buffer, 1, rgb_size, f);
-	fclose(f);
-}
 
 /* get cursor */
 static void
@@ -154,50 +107,114 @@ cursor(uint8_t *dst, uint32_t dst_width, uint32_t dst_height,
 }
 
 static void
-capture(struct wl_client *client, struct wl_resource *resource, int32_t fd)
+send_buffer_metadata(struct wl_resource *resource, uint32_t width,
+                     uint32_t height)
 {
-	struct screen *screen;
-	struct wld_buffer *shm_buffer;
-	uint8_t *pixels;
-	uint32_t width, height;
+	swc_snap_send_buffer(resource, width, height,
+	                     SWC_SNAP_PIXEL_FORMAT_ARGB8888);
+}
+
+static bool
+get_screen(struct screen **screen, uint32_t *width, uint32_t *height)
+{
+	struct screen *s;
 
 	if (wl_list_empty(&swc.screens)) {
-		fprintf(stderr, "snap: no screens available\n");
-		close(fd);
+		return false;
+	}
+
+	s = wl_container_of(swc.screens.next, s, link);
+	*screen = s;
+	*width = s->base.geometry.width;
+	*height = s->base.geometry.height;
+	return true;
+}
+
+static void
+capture(struct wl_client *client, struct wl_resource *resource,
+        struct wl_resource *buffer_resource, uint32_t flags)
+{
+	struct screen *screen;
+	struct swc_shm_buffer_info target;
+	struct wld_buffer *shm_buffer;
+	uint8_t *src_pixels;
+	uint8_t *dst_pixels;
+	uint32_t width, height;
+	uint32_t target_width, target_height, target_stride, target_format;
+	uint32_t row_bytes;
+	struct timespec ts;
+	(void)client;
+
+	if (!get_screen(&screen, &width, &height)) {
+		swc_snap_send_failed(resource, SWC_SNAP_FAILURE_REASON_NO_SCREEN);
 		return;
 	}
 
-	screen = wl_container_of(swc.screens.next, screen, link);
-	width = screen->base.geometry.width;
-	height = screen->base.geometry.height;
+	send_buffer_metadata(resource, width, height);
 
-	/* put compositor in shm*/
+	if (!shm_buffer_get_info(buffer_resource, &target)) {
+		swc_snap_send_failed(resource,
+		                     SWC_SNAP_FAILURE_REASON_UNSUPPORTED_BUFFER);
+		return;
+	}
+
+	target_format = target.format;
+	if (target_format != WL_SHM_FORMAT_XRGB8888 &&
+	    target_format != WL_SHM_FORMAT_ARGB8888) {
+		swc_snap_send_failed(resource,
+		                     SWC_SNAP_FAILURE_REASON_UNSUPPORTED_BUFFER);
+		return;
+	}
+
+	target_width = (uint32_t)target.width;
+	target_height = (uint32_t)target.height;
+	target_stride = (uint32_t)target.stride;
+	row_bytes = width * 4;
+
+	if (target_width < width || target_height < height ||
+	    target_stride < row_bytes) {
+		swc_snap_send_failed(resource, SWC_SNAP_FAILURE_REASON_SIZE_MISMATCH);
+		return;
+	}
+	if (!target.writable) {
+		swc_snap_send_failed(resource, SWC_SNAP_FAILURE_REASON_UNSUPPORTED_BUFFER);
+		return;
+	}
+
 	shm_buffer = compositor_render_to_shm(screen);
 	if (!shm_buffer) {
-		fprintf(stderr, "snap: failed to render to SHM\n");
-		close(fd);
+		swc_snap_send_failed(resource, SWC_SNAP_FAILURE_REASON_INTERNAL);
 		return;
 	}
 
-	/* get pixel data from shm */
 	if (!wld_map(shm_buffer) || !shm_buffer->map) {
-		fprintf(stderr, "snap: failed to map buffer data\n");
 		wld_buffer_unreference(shm_buffer);
-		close(fd);
+		swc_snap_send_failed(resource, SWC_SNAP_FAILURE_REASON_INTERNAL);
 		return;
 	}
 
-	pixels = shm_buffer->map;
+	src_pixels = shm_buffer->map;
 
-	cursor(pixels, width, height, shm_buffer->pitch, screen);
+	if (flags & SWC_SNAP_FLAGS_OVERLAY_CURSOR) {
+		cursor(src_pixels, width, height, shm_buffer->pitch, screen);
+	}
 
-	ppm(fd, pixels, width, height, shm_buffer->pitch);
+	dst_pixels = target.data;
+
+	for (uint32_t y = 0; y < height; y++) {
+		memcpy(dst_pixels + (size_t)y * target_stride,
+		       src_pixels + (size_t)y * shm_buffer->pitch, row_bytes);
+	}
 
 	wld_unmap(shm_buffer);
 	wld_buffer_unreference(shm_buffer);
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	swc_snap_send_ready(resource, (uint32_t)ts.tv_sec, (uint32_t)ts.tv_nsec);
 }
 
 static const struct swc_snap_interface snap_impl = {
+    .destroy = destroy_resource,
     .capture = capture,
 };
 
@@ -212,10 +229,18 @@ bind_snap(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		return;
 	}
 	wl_resource_set_implementation(resource, &snap_impl, NULL, NULL);
+
+	if (!wl_list_empty(&swc.screens)) {
+		struct screen *screen;
+
+		screen = wl_container_of(swc.screens.next, screen, link);
+		send_buffer_metadata(resource, screen->base.geometry.width,
+		                     screen->base.geometry.height);
+	}
 }
 
 struct wl_global *
 snap_manager_create(struct wl_display *display)
 {
-	return wl_global_create(display, &swc_snap_interface, 1, NULL, &bind_snap);
+	return wl_global_create(display, &swc_snap_interface, 2, NULL, &bind_snap);
 }
