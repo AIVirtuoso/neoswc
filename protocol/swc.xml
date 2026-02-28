@@ -37,7 +37,7 @@
         </request>
     </interface>
 
-    <interface name="swc_panel" version="1">
+    <interface name="swc_panel" version="2">
         <enum name="edge">
             <entry name="top" value="0" />
             <entry name="bottom" value="1" />
