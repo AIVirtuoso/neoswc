@@ -115,11 +115,11 @@ focus(struct window *window)
 {
 	if (focused_window) {
 		swc_window_set_border(focused_window->swc, border_color_normal,
-		                      border_width);
+		                      border_width, 0, 0);
 	}
 
 	if (window) {
-		swc_window_set_border(window->swc, border_color_active, border_width);
+		swc_window_set_border(window->swc, border_color_active, border_width, 0, 0);
 		swc_window_focus(window->swc);
 	} else {
 		swc_window_focus(NULL);

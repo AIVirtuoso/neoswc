@@ -1,0 +1,73 @@
+install_headers('swc.h')
+
+libswc_src = files(
+  'bindings.c',
+  'compositor.c',
+  'data.c',
+  'data_device.c',
+  'data_device_manager.c',
+  'dmabuf.c',
+  'drm.c',
+  'input.c',
+  'kde_decoration.c',
+  'keyboard.c',
+  'launch.c',
+  'mode.c',
+  'output.c',
+  'panel.c',
+  'panel_manager.c',
+  'plane.c',
+  'pointer.c',
+  'primary_plane.c',
+  'region.c',
+  'screen.c',
+  'select.c',
+  'snap.c',
+  'shell.c',
+  'shell_surface.c',
+  'shm.c',
+  'subcompositor.c',
+  'subsurface.c',
+  'surface.c',
+  'swc.c',
+  'util.c',
+  'view.c',
+  'wallpaper.c',
+  'wayland_buffer.c',
+  'window.c',
+  'xdg_decoration.c',
+  'xdg_shell.c',
+
+  input_backend == 'libinput' ? 'seat.c' : [],
+  input_backend == 'wscons' ? 'seat-ws.c' : [],
+  input_backend == 'evdev' ? 'seat-evdev.c' : [],
+
+  xwayland.found() ? ['xserver.c', 'xwm.c'] : [],  
+)
+libswc_src += [cursor, launch_protocol]
+
+foreach proto, proto_src : protos
+	libswc_src += proto_src
+endforeach
+
+libswc_lib = library(
+	'swc',
+	libswc_src,
+	dependencies: requires + requires_private,
+	install: true,
+	include_directories: include_directories('..'),
+)
+
+# Allows other meson projects to use libswc
+libswc = declare_dependency(
+	link_with: libswc_lib,
+	dependencies: requires + requires_private,
+)
+
+pkg.generate(
+  libswc_lib,
+  name: 'swc',
+  description: 'A library for making a simple Wayland compositor',
+  requires: requires,
+  requires_private: requires_private,
+)

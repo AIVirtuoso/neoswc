@@ -25,14 +25,6 @@
 
 #include <linux/input.h>
 
-#ifndef EVDEV_KBD_DEVICE
-#define EVDEV_KBD_DEVICE "/dev/input/event0"
-#endif
-
-#ifndef EVDEV_POINTER_DEVICE
-#define EVDEV_POINTER_DEVICE "/dev/input/event1"
-#endif
-
 struct seat {
 	struct swc_seat base;
 

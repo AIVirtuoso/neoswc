@@ -129,7 +129,9 @@ struct bitmaps {
 static void
 handle_compressed_metrics(int32_t count, struct compressed_metrics *m)
 {
+#if ENABLE_DEBUG
 	fprintf(stderr, "metrics count: %d\n", count);
+#endif
 	extracted_font.count = count;
 	extracted_font.glyphs = calloc(count, sizeof(struct glyph));
 
@@ -154,15 +156,21 @@ static void
 handle_metrics(void *metricbuf)
 {
 	struct metrics *metrics = metricbuf;
+#if ENABLE_DEBUG
 	fprintf(stderr, "metric format: %x\n", metrics->format);
+#endif
 
 	if ((metrics->format & PCF_FORMAT_MASK) == PCF_DEFAULT_FORMAT) {
+#if ENABLE_DEBUG
 		fprintf(stderr, "todo...\n");
+#endif
 	} else if ((metrics->format & PCF_FORMAT_MASK) == PCF_COMPRESSED_METRICS) {
 		handle_compressed_metrics(metrics->compressed.count,
 		                          &metrics->compressed.compressed_metrics[0]);
 	} else {
+#if ENABLE_DEBUG
 		fprintf(stderr, "incompatible format\n");
+#endif
 		abort();
 	}
 }
@@ -170,13 +178,17 @@ handle_metrics(void *metricbuf)
 static void
 handle_glyph_names(struct glyph_names *names)
 {
+#if ENABLE_DEBUG
 	fprintf(stderr, "glyph count %d\n", names->glyph_count);
+#endif
 
 	if (names->glyph_count != extracted_font.count) {
 		abort();
 	}
 
+#if ENABLE_DEBUG
 	fprintf(stderr, "glyph names format %x\n", names->format);
+#endif
 
 	char *names_start = ((char *)names) + sizeof(struct glyph_names) +
 	                    (names->glyph_count + 1) * sizeof(int32_t);
@@ -194,16 +206,21 @@ handle_glyph_names(struct glyph_names *names)
 static void
 handle_bitmaps(struct bitmaps *bitmaps)
 {
+#if ENABLE_DEBUG
 	fprintf(stderr, "bitmaps count %d\n", bitmaps->glyph_count);
+#endif
 
 	if (bitmaps->glyph_count != extracted_font.count) {
 		abort();
 	}
-
+#if ENABLE_DEBUG
 	fprintf(stderr, "format %x\n", bitmaps->format);
+#endif
 
 	if (bitmaps->format != 2) {
+#if ENABLE_DEBUG
 		fprintf(stderr, "format not yet supported\n");
+#endif
 		abort();
 	}
 
@@ -223,11 +240,15 @@ static void
 handle_pcf(void *fontbuf)
 {
 	struct pcf_header *header = fontbuf;
+#if ENABLE_DEBUG
 	fprintf(stderr, "tablecount %d\n", header->table_count);
+#endif
 
 	for (unsigned i = 0; i < header->table_count; ++i) {
 		struct toc_entry *entry = &header->tables[i];
+#if ENABLE_DEBUG
 		fprintf(stderr, "type: %d\n", entry->type);
+#endif
 		if (entry->type == PCF_METRICS) {
 			handle_metrics((void *)((uintptr_t)fontbuf + entry->offset));
 		} else if (entry->type == PCF_GLYPH_NAMES) {
@@ -472,13 +493,17 @@ output_interesting_cursors(FILE *file)
 		find_cursor_and_mask(interesting_cursors[i].source_name, &cursor,
 		                     &mask);
 		if (!cursor) {
+#if ENABLE_DEBUG
 			fprintf(stderr, "no cursor for %s\n",
 			        interesting_cursors[i].source_name);
+#endif
 			abort();
 		}
 		if (!mask) {
+#if ENABLE_DEBUG
 			fprintf(stderr, "no mask for %s\n",
 			        interesting_cursors[i].source_name);
+#endif
 			abort();
 		}
 		reconstruct_glyph(cursor, mask, interesting_cursors[i].target_name,
@@ -492,7 +517,9 @@ int
 main(int argc, char *argv[])
 {
 	if (argc != 3) {
+#if ENABLE_DEBUG
 		fprintf(stderr, "Usage: %s input.pcf output.h\n", argv[0]);
+#endif
 		return EXIT_FAILURE;
 	}
 
