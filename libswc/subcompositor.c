@@ -48,7 +48,6 @@ get_subsurface(struct wl_client *client, struct wl_resource *resource,
 		wl_resource_post_no_memory(resource);
 		return;
 	}
-
 	surface->subsurface = subsurface;
 }
 

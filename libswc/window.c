@@ -194,6 +194,7 @@ EXPORT void
 swc_window_set_fullscreen(struct swc_window *base, struct swc_screen *screen)
 {
 	struct window *window = INTERNAL(base);
+
 	struct swc_rectangle geom;
 	swc_window_get_geometry(base, &geom);
 	

@@ -1149,6 +1149,7 @@ compositor_view_set_border_color(struct compositor_view *view, uint32_t outcolor
 
 	update(&view->base);
 }
+
 /* }}} */
 
 static void

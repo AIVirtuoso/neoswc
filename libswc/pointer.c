@@ -427,6 +427,7 @@ pointer_initialize(struct pointer *pointer)
 {
 	struct screen *screen = wl_container_of(swc.screens.next, screen, link);
 	struct swc_rectangle *geom = &screen->base.geometry;
+
 	/* Center cursor in the geometry of the first screen. */
 	screen = wl_container_of(swc.screens.next, screen, link);
 	pointer->x = wl_fixed_from_int(geom->x + geom->width / 2);
