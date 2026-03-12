@@ -1,5 +1,8 @@
 executable('swcsnap',
   ['swcsnap.c', protos.get('swc_snap') ],
-  dependencies: libswc,
+  dependencies: [
+    libswc,
+    dependency('wayland-client'),
+  ],
   install: true,
 )
