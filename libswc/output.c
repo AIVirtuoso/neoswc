@@ -20,7 +20,7 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
 	struct output *output = data;
 	struct screen *screen = output->screen;
-	struct mode *mode;
+	struct mode *mode = &screen->planes.primary.mode;
 	struct wl_resource *resource;
 	uint32_t flags;
 
@@ -54,6 +54,10 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		                    mode->refresh);
 	}
 
+	if (version >= 4) {
+		wl_output_send_name(resource, output->name);
+	}
+
 	if (version >= 2) {
 		wl_output_send_done(resource);
 	}
@@ -64,6 +68,7 @@ output_new(drmModeConnectorPtr connector)
 {
 	struct output *output;
 	struct mode *modes;
+	const char *name;
 	uint32_t i;
 
 	if (!(output = malloc(sizeof(*output)))) {
@@ -71,7 +76,7 @@ output_new(drmModeConnectorPtr connector)
 		goto error0;
 	}
 
-	output->global = wl_global_create(swc.display, &wl_output_interface, 3,
+	output->global = wl_global_create(swc.display, &wl_output_interface, 4,
 	                                  output, &bind_output);
 
 	if (!output->global) {
@@ -111,6 +116,10 @@ output_new(drmModeConnectorPtr connector)
 	if (!output->preferred_mode) {
 		output->preferred_mode = &modes[0];
 	}
+
+	if (!(name = drmModeGetConnectorTypeName(connector->connector_type)))
+		name = "UNKNOWN";
+	snprintf(output->name, sizeof(output->name), "%s-%d", name, connector->connector_type_id);
 
 	return output;
 
