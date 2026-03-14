@@ -54,6 +54,7 @@ struct swc {
 	struct wl_global *subcompositor;
 	struct wl_global *wallpaper_manager;
 	struct wl_global *xdg_decoration_manager;
+	struct wl_global *xdg_output_manager;
 	struct wl_global *xdg_shell;
 
 #ifdef ENABLE_XWAYLAND
