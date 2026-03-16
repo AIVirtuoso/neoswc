@@ -36,6 +36,7 @@ libswc_src = files(
   'wayland_buffer.c',
   'window.c',
   'xdg_decoration.c',
+  'xdg_output.c',
   'xdg_shell.c',
 
   input_backend == 'libinput' ? 'seat.c' : [],
