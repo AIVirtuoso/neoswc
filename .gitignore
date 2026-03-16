@@ -1,16 +1,14 @@
 *.o
-*.a
+*.lo
+.*.sw*
 
-# Generated from swc.pc.in
-swc.pc
+protocol/*-protocol.[ch]
 
-# Generated from protocol/*.xml
-protocol/*.c
-protocol/*.h
-
-# Generated from launch/launch.c
-launch/swc-launch
-
-# Generated from convert_font.c and cursor.pcf
-cursor/convert_font
-cursor/cursor_data.h
+/.deps/
+/swc.pc
+/libswc/libswc.a
+/libswc/libswc.so*
+/launch/swc-launch
+/cursor/convert_font
+/cursor/cursor_data.h
+/example/wm
