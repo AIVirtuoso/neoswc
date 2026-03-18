@@ -670,6 +670,12 @@ swc_set_zoom(float level)
 
 	if (compositor.zoom != level) {
 		compositor.zoom = level;
+		if (level == 1.0f) {
+			if (compositor.zoom_buffer) {
+				wld_buffer_unreference(compositor.zoom_buffer);
+				compositor.zoom_buffer = NULL;
+			}
+		}
 		/* damage entire screen to force full repaint */
 		schedule_updates(-1);
 	}
@@ -694,6 +700,33 @@ wld_to_pixman_format(enum wld_format format)
 	}
 }
 
+static struct wld_buffer *
+zoom_buffer_for_screen(struct screen *screen)
+{
+	uint32_t width = screen->base.geometry.width;
+	uint32_t height = screen->base.geometry.height;
+
+	if (compositor.zoom_buffer &&
+	    (compositor.zoom_buffer->width != width ||
+	     compositor.zoom_buffer->height != height ||
+	     compositor.zoom_buffer->format != WLD_FORMAT_ARGB8888)) {
+		wld_buffer_unreference(compositor.zoom_buffer);
+		compositor.zoom_buffer = NULL;
+	}
+
+	if (!compositor.zoom_buffer) {
+		compositor.zoom_buffer =
+		    wld_create_buffer(swc.shm->context, width, height,
+		                      WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
+		if (!compositor.zoom_buffer) {
+			return NULL;
+		}
+	}
+
+	wld_buffer_reference(compositor.zoom_buffer);
+	return compositor.zoom_buffer;
+}
+
 /* render zoomed view to shm      wallpaper unscaled, windows scaled */
 static struct wld_buffer *
 render_zoomed_to_shm(struct screen *screen, float zoom)
@@ -706,9 +739,7 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 	int32_t cy = screen_y + height / 2;
 	struct compositor_view *view;
 	struct wld_buffer *background;
-
-	struct wld_buffer *buffer = wld_create_buffer(
-	    swc.shm->context, width, height, WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
+	struct wld_buffer *buffer = zoom_buffer_for_screen(screen);
 	if (!buffer) {
 		return NULL;
 	}
@@ -1742,6 +1773,7 @@ compositor_finalize(void)
 
 	if (compositor.zoom_buffer) {
 		wld_buffer_unreference(compositor.zoom_buffer);
+		compositor.zoom_buffer = NULL;
 	}
 	pixman_region32_fini(&compositor.damage);
 	pixman_region32_fini(&compositor.opaque);
