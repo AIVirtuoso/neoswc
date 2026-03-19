@@ -8,6 +8,7 @@ foreach proto : [
   'swc_snap.xml',
   'swc_select.xml',
   'swc_wallpaper.xml',
+  'wlr-layer-shell-unstable-v1.xml',
   'wayland-drm.xml',
   wl.find_protocol('xdg-shell', state: 'stable'),
   wl.find_protocol('linux-dmabuf', state: 'unstable', version: 1),

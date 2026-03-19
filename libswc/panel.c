@@ -258,11 +258,15 @@ panel_new(struct wl_client *client, uint32_t version, uint32_t id,
 	    wl_resource_create(client, &swc_panel_interface, version, id);
 
 	if (!panel->resource) {
-		goto error1;
+		goto error0;
+	}
+
+	if (!surface_set_role(surface, panel->resource)) {
+		goto error2;
 	}
 
 	if (!(panel->view = compositor_create_view(surface))) {
-		goto error2;
+		goto error3;
 	}
 
 	wl_resource_set_implementation(panel->resource, &panel_impl, panel,
@@ -282,9 +286,9 @@ panel_new(struct wl_client *client, uint32_t version, uint32_t id,
 
 	return panel;
 
-error2:
+error3:
 	wl_resource_destroy(panel->resource);
-error1:
+error2:
 	free(panel);
 error0:
 	return NULL;

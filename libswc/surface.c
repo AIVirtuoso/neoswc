@@ -46,12 +46,25 @@ handle_buffer_destroy(struct wl_listener *listener, void *data)
 
 	state = wl_container_of(listener, state, buffer_destroy_listener);
 	state->buffer = NULL;
+	state->buffer_resource = NULL;
+}
+
+static void
+handle_role_destroy(struct wl_listener *listener, void *data)
+{
+	struct surface *surface = wl_container_of(listener, surface, role_destroy_listener);
+
+	(void)data;
+
+	surface->role = NULL;
 }
 
 static void
 state_initialize(struct surface_state *state)
 {
 	state->buffer = NULL;
+	/*layer-shell rejects surfaces with a pre-existing buffer */
+	state->buffer_resource = NULL;
 	state->buffer_destroy_listener.notify = &handle_buffer_destroy;
 
 	pixman_region32_init(&state->damage);
@@ -304,6 +317,7 @@ surface_apply_pending(struct surface *surface, bool flush_children)
 	}
 
 	subsurface_parent_commit(surface);
+	wl_signal_emit(&surface->signal.commit, surface);
 
 	if (flush_children) {
 		struct subsurface *child;
@@ -385,6 +399,9 @@ surface_destroy(struct wl_resource *resource)
 	if (surface->view) {
 		wl_list_remove(&surface->view_handler.link);
 	}
+	if (surface->role) {
+		wl_list_remove(&surface->role_destroy_listener.link);
+	}
 
 	free(surface);
 }
@@ -416,8 +433,11 @@ surface_new(struct wl_client *client, uint32_t version, uint32_t id)
 
 	/* Initialize the surface. */
 	surface->pending.commit = 0;
+	wl_signal_init(&surface->signal.commit);
 	surface->view = NULL;
 	surface->view_handler.impl = &view_handler_impl;
+	surface->role = NULL;
+	surface->role_destroy_listener.notify = handle_role_destroy;
 	surface->subsurface = NULL;
 	wl_list_init(&surface->subsurfaces);
 	surface->has_window_geometry = false;
@@ -456,6 +476,26 @@ surface_set_view(struct surface *surface, struct view *view)
 		view_attach(view, surface->state.buffer);
 		view_update(view);
 	}
+}
+
+bool
+surface_set_role(struct surface *surface, struct wl_resource *role)
+{
+	if (surface->role) {
+		return false;
+	}
+
+	surface->role = role;
+	wl_resource_add_destroy_listener(role, &surface->role_destroy_listener);
+	return true;
+}
+
+bool
+surface_has_buffer(struct surface *surface)
+{
+	return surface->state.buffer_resource ||
+	       ((surface->pending.commit & SURFACE_COMMIT_ATTACH) &&
+	        surface->pending.state.buffer_resource);
 }
 
 void

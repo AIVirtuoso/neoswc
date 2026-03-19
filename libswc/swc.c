@@ -31,6 +31,7 @@
 #include "kde_decoration.h"
 #include "keyboard.h"
 #include "launch.h"
+#include "layer_shell.h"
 #include "panel_manager.h"
 #include "pointer.h"
 #include "screen.h"
@@ -228,57 +229,65 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error12;
 	}
 
+	swc.layer_shell = layer_shell_create(display);
+	if (!swc.layer_shell) {
+		ERROR("Could not initialize layer shell\n");
+		goto error13;
+	}
+
 	swc.panel_manager = panel_manager_create(display);
 	if (!swc.panel_manager) {
 		ERROR("Could not initialize panel manager\n");
-		goto error13;
+		goto error14;
 	}
 
 	swc.snap_manager = snap_manager_create(display);
 	if (!swc.snap_manager) {
 		ERROR("Could not initialize snap manager\n");
-		goto error14;
+		goto error15;
 	}
 
 	swc.wallpaper_manager = swc_wallpaper_manager_create(display);
 	if (!swc.wallpaper_manager) {
 		ERROR("Could not initialize wallpaper manager\n");
-		goto error15;
+		goto error16;
 	}
 
 #ifdef ENABLE_XWAYLAND
 	if (!xserver_initialize()) {
 		ERROR("Could not initialize xwayland\n");
-		goto error16;
+		goto error17;
 	}
 #endif
 
 	swc.select_manager = select_manager_create(display);
 	if (!swc.select_manager) {
 		ERROR("Could not initialize select manager\n");
-		goto error17;
+		goto error18;
 	}
 
 	swc.xdg_output_manager = xdg_output_manager_create(display);
 	if (!swc.xdg_output_manager) {
 		ERROR("Could not initialize XDG output manager\n");
-		goto error17;
+		goto error18;
 	}
 
 	setup_compositor();
 
 	return true;
 
-error17:
+error18:
 	wl_global_destroy(swc.select_manager);
 #ifdef ENABLE_XWAYLAND
-error16:
+error17:
 	wl_global_destroy(swc.wallpaper_manager);
 #endif
-error15:
+error16:
 	wl_global_destroy(swc.snap_manager);
-error14:
+error15:
 	wl_global_destroy(swc.panel_manager);
+error14:
+	wl_global_destroy(swc.layer_shell);
 error13:
 	wl_global_destroy(swc.kde_decoration_manager);
 error12:
@@ -320,6 +329,7 @@ swc_finalize(void)
 	wl_global_destroy(swc.snap_manager);
 	wl_global_destroy(swc.select_manager);
 	wl_global_destroy(swc.panel_manager);
+	wl_global_destroy(swc.layer_shell);
 	wl_global_destroy(swc.xdg_decoration_manager);
 	wl_global_destroy(swc.xdg_shell);
 	wl_global_destroy(swc.shell);
