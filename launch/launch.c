@@ -53,6 +53,7 @@
 #if defined(__FreeBSD__)
 #include <sys/consio.h>
 #include <sys/kbio.h>
+#include <dev/evdev/input.h> /* needed for eviocgrab */
 #elif defined(__NetBSD__)
 #include <dev/wscons/wsdisplay_usl_io.h>
 
@@ -264,6 +265,17 @@ handle_socket_data(int socket)
 				fprintf(stderr, "too many input devices opened\n");
 				goto fail;
 			}
+			#ifdef __FreeBSD__
+			/* this (EVIOCGRAB) is the only way to
+			 * prevent the TTY from recieving
+			 * input from the neuswc session.
+			 */
+			if (ioctl(fd, EVIOCGRAB, (void*)1) == -1)
+			  {
+			    fprintf(stderr, "EVIOCGRAB %s: %s", path, strerr(errno));
+			    goto fail;
+			  }
+			#endif
 			input_fds[num_input_fds++] = fd;
 		} else if (device_is_drm(st.st_rdev)) {
 			if (num_drm_fds == ARRAY_LENGTH(drm_fds)) {
@@ -450,7 +462,7 @@ setup_tty(int fd)
 		die("failed to set keyboard mode to K_OFF:");
 	}
 #elif defined(__FreeBSD__)
-	if (ioctl(fd, KDSKBMODE, K_RAW) == -1) {
+	if (ioctl(fd, KDSKBMODE, K_CODE) == -1) {
 	  	 die("failed to set keyboard mode to K_RAW:");
 	}
 #endif
