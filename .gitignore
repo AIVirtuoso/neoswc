@@ -12,3 +12,6 @@ protocol/*-protocol.[ch]
 /cursor/convert_font
 /cursor/cursor_data.h
 /example/wm
+
+/build
+/*.patch
