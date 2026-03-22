@@ -50,7 +50,10 @@
 #include <sys/sysmacros.h>
 #endif
 
-#if defined(__NetBSD__)
+#if defined(__FreeBSD__)
+#include <sys/consio.h>
+#include <sys/kbio.h>
+#elif defined(__NetBSD__)
 #include <dev/wscons/wsdisplay_usl_io.h>
 
 #elif defined(__OpenBSD__)
@@ -325,7 +328,11 @@ find_vt(char *vt, size_t size)
 	 * new VT instead of using the current one. */
 	if (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY") ||
 	    !(vtnr = getenv("XDG_VTNR"))) {
+#if defined(__FreeBSD__)
+	  tty0_fd=open("/dev/ttyv0", O_RDWR | O_CLOEXEC);
+	  #else
 		tty0_fd = open("/dev/tty0", O_RDWR | O_CLOEXEC);
+		#endif
 		if (tty0_fd == -1) {
 			die("open /dev/tty0:");
 		}
@@ -333,11 +340,21 @@ find_vt(char *vt, size_t size)
 			die("VT open query failed:");
 		}
 		close(tty0_fd);
+#if defined(__FreeBSD__)
+		if (snprintf(vt, size, "/dev/ttyv%d", vt_num - 1) >= size) {
+		#else
 		if (snprintf(vt, size, "/dev/tty%d", vt_num) >= size) {
-			die("VT number is too large");
+		
+		#endif
+		  			die("VT number is too large");
 		}
 	} else {
+#if defined(__FreeBSD__)
+		  int n=atoi(vtnr);
+		  if (snprintf(vt, size, "/dev/ttyv%d", n - 1) >= size) {
+		  #else
 		if (snprintf(vt, size, "/dev/tty%s", vtnr) >= size) {
+		  #endif
 			die("XDG_VTNR is too long");
 		}
 	}
@@ -369,8 +386,10 @@ setup_tty(int fd)
 {
 	struct stat st;
 	int vt;
-#ifndef __OpenBSD__
+#if !defined (__OpenBSD__) && !defined(__FreeBSD__)
 	struct vt_stat state;
+	#endif
+#if !defined(__OpenBSD__)
 	struct vt_mode mode = {
 	    .mode = VT_PROCESS, .relsig = SIGUSR1, .acqsig = SIGUSR2};
 #endif
@@ -390,15 +409,25 @@ setup_tty(int fd)
 	}
 #endif
 
-#ifdef __OpenBSD__
+#if defined(__OpenBSD__)
 	/* OpenBSD wscons has no VT_GETSTATE */
+	original_vt_state.vt=vt;
+#elif defined(__FreeBSD__)
+	{
+	  int vt_num;
+	  if (ioctl(fd, VT_GETACTIVE, &vt_num) == -1)
+	    {
+	      die("failed to get current VT state:");
+	    }
+	  original_vt_state.vt=vt_num;
+	}
 #else
 	if (ioctl(fd, VT_GETSTATE, &state) == -1) {
 		die("failed to get the current VT state:");
 	}
 #endif
 
-#ifndef __OpenBSD__
+#if !defined (__OpenBSD__) && !defined(__FreeBSD__)
 	original_vt_state.vt = state.v_active;
 #else
 	original_vt_state.vt = vt;
@@ -451,26 +480,6 @@ setup_tty(int fd)
 		}
 	}
 #endif
-
-#ifdef __OpenBSD__
-	/* OpenBSD wscons already on active VT */
-	activate();
-#else
-	if (vt == original_vt_state.vt) {
-		activate();
-	} else if (!nflag) {
-		if (ioctl(fd, VT_ACTIVATE, vt) == -1) {
-			perror("failed to activate VT");
-			goto error2;
-		}
-
-		if (ioctl(fd, VT_WAITACTIVE, vt) == -1) {
-			perror("failed to wait for VT to become active");
-			goto error2;
-		}
-	}
-#endif
-
 	original_vt_state.altered = true;
 
 	return;
