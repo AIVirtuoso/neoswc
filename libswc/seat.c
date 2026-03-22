@@ -41,7 +41,11 @@
 #include <unistd.h>
 
 #include <libinput.h>
+#if defined(__linux__)
 #include <linux/input.h>
+#elif defined(__FreeBSD__)
+#include <dev/evdev/input.h> /* mirrors linux/input.h functionality */
+#endif
 #ifdef ENABLE_LIBUDEV
 #include <libudev.h>
 #endif
