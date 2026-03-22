@@ -51,7 +51,16 @@ device_is_input(dev_t rdev)
 	if (devname_is(rdev, "kbd")) {
 		return true;
 	}
-	if (devname_is(rdev, "mouse")) {
+	/* mouse(4) lists psm, ums, and sysmouse
+	 * though, psm and ums might not always be availible.
+	 */
+	if (devname_is(rdev, "sysmouse")) {
+		return true;
+	}
+	if (devname_is(rdev, "psm")) {
+		return true;
+	}
+	if (devname_is(rdev, "ums")) {
 		return true;
 	}
 	return false;
