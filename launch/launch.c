@@ -449,6 +449,10 @@ setup_tty(int fd)
 	if (ioctl(fd, KDSKBMODE, K_OFF) == -1) {
 		die("failed to set keyboard mode to K_OFF:");
 	}
+#elif defined(__FreeBSD__)
+	if (ioctl(fd, KDSKBMODE, K_RAW) == -1) {
+	  	 die("failed to set keyboard mode to K_RAW:");
+	}
 #endif
 	if (ioctl(fd, KDSETMODE, KD_GRAPHICS) == -1) {
 		perror("KDSETMODE KD_GRAPHICS");
@@ -569,7 +573,14 @@ main(int argc, char *argv[])
 		usage(argv[0]);
 	}
 
-	if (socketpair(AF_LOCAL, SOCK_SEQPACKET, 0, sock) == -1) {
+	
+	if (socketpair(AF_LOCAL,
+		       #ifdef __linux__
+		       SOCK_SEQPACKET,
+		       #else
+		       SOCK_STREAM,
+		       #endif
+		       0, sock) == -1) {
 		die("socketpair:");
 	}
 	if (fcntl(sock[0], F_SETFD, FD_CLOEXEC) == -1) {

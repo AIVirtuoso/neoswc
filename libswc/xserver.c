@@ -155,6 +155,7 @@ begin:
 
 	close(lock_fd);
 
+	#ifdef __linux__
 	/* Bind to abstract socket */
 	addr.sun_path[0] = '\0';
 	snprintf(addr.sun_path + 1, sizeof(addr.sun_path) - 1, SOCKET_FMT,
@@ -162,6 +163,9 @@ begin:
 	if ((xserver.abstract_fd = open_socket(&addr)) < 0) {
 		goto retry1;
 	}
+	#else
+	xserver.abstract_fd=-1;
+	#endif
 
 	/* Bind to unix socket */
 	mkdir(SOCKET_DIR, 0777);
@@ -182,7 +186,9 @@ close_display(void)
 {
 	char path[64];
 
+	#ifdef __linux__
 	close(xserver.abstract_fd);
+	#endif
 	close(xserver.unix_fd);
 
 	snprintf(path, sizeof(path), SOCKET_FMT, xserver.display);
@@ -268,6 +274,9 @@ xserver_initialize(void)
 		/* Unset the FD_CLOEXEC flag on the FDs that will get passed to
 		 * Xwayland. */
 		for (index = 0; index < ARRAY_LENGTH(fds); ++index) {
+#if defined(__FreeBSD__)
+		  if (fds[index]==-1) continue;
+#endif
 			if (fcntl(fds[index], F_SETFD, 0) != 0) {
 				ERROR("fcntl() failed: %s\n", strerror(errno));
 				goto fail;
@@ -290,9 +299,16 @@ xserver_initialize(void)
 		}
 
 		setenv("WAYLAND_SOCKET", strings[0], true);
+
+		#ifdef __linux__
 		execlp("Xwayland", "Xwayland", xserver.display_name, "-rootless",
 		       "-terminate", "-listen", strings[2], "-listen", strings[3],
 		       "-wm", strings[1], NULL);
+		#else
+		execlp("Xwayland", "Xwayland", xserver.display_name, "-rootless",
+		       "-terminate", "-listen", strings[3],
+		       "-wm", strings[1], NULL);
+		#endif
 
 	fail:
 		exit(EXIT_FAILURE);
