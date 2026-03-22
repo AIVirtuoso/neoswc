@@ -12,7 +12,7 @@ project('swc', 'c',
 cc = meson.get_compiler('c')
 os = host_machine.system()
 pkg = import('pkgconfig')
-wl = import('wayland')
+wl = import('unstable-wayland')
 
 add_project_arguments(cc.get_supported_arguments([
   '-fvisibility=hidden',
