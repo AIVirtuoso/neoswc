@@ -1,6 +1,6 @@
 project('swc', 'c',
   version: '0.0',
-  meson_version: '>=1.1',
+  meson_version: '>=1.7.99',
   license: 'MIT',
   default_options: [
     'c_std=c11',
@@ -12,7 +12,7 @@ project('swc', 'c',
 cc = meson.get_compiler('c')
 os = host_machine.system()
 pkg = import('pkgconfig')
-wl = import('unstable-wayland')
+wl = import('wayland')
 
 add_project_arguments(cc.get_supported_arguments([
   '-fvisibility=hidden',
