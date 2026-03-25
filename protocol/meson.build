@@ -21,3 +21,4 @@ foreach proto : [
     server: true)
   protos += {fs.stem(fs.name(proto)): protocols}
 endforeach
+install_data('swc.xml', install_dir: get_option('datadir') / 'swc')
