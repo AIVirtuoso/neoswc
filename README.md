@@ -33,4 +33,8 @@ you will need:
 - on linux, either libudev or evdev, depending on your choice of input backend, neither on BSD
 - xcb, xcb-composite, xcb-ewmh and xcb-icccm if you want Xwayland support
 
-then, run bmake
+then, run 
+
+meson setup build
+ninja -C build
+meson -C build install
