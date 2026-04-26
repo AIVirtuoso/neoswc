@@ -368,6 +368,15 @@ swc_window_set_border(struct swc_window *window, uint32_t inner_border_color,
 }
 
 EXPORT void
+swc_window_set_decor(struct swc_window *window, uint32_t color, uint32_t top,
+                     uint32_t right, uint32_t bottom, uint32_t left)
+{
+	struct compositor_view *view = INTERNAL(window)->view;
+
+	compositor_view_set_decor(view, color, top, right, bottom, left);
+}
+
+EXPORT void
 swc_window_begin_move(struct swc_window *window)
 {
 	window_begin_move(INTERNAL(window), NULL);
@@ -541,7 +550,7 @@ window_initialize(struct window *window, const struct window_impl *impl,
 	window->resize.interaction.active = false;
 	window->resize.interaction.handler = (struct pointer_handler){
 	    .motion = resize_motion,
-	    .button = handle_button,
+		.button = handle_button,
 	};
 	window->resize.last_time = 0;
 

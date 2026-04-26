@@ -88,6 +88,12 @@ struct compositor_view {
 		bool damaged_border2;
 	} border;
 
+	struct {
+		uint32_t color;
+		uint32_t top, right, bottom, left;
+		bool damaged;
+	} decor;
+
 	struct wl_list link;
 	struct wl_signal destroy_signal;
 };
@@ -122,6 +128,10 @@ compositor_view_set_border_color(struct compositor_view *view,
 void
 compositor_view_set_border_width(struct compositor_view *view,
                                  uint32_t outwidth, uint32_t inwidth);
+void
+compositor_view_set_decor(struct compositor_view *view, uint32_t color,
+                          uint32_t top, uint32_t right, uint32_t bottom,
+                          uint32_t left);
 
 /**
  * get the current composited buffer for a screen for screenshotss.

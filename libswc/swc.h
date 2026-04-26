@@ -391,6 +391,16 @@ swc_window_set_border(struct swc_window *window, uint32_t inner_border_color,
                       uint32_t outer_border_width);
 
 /**
+ * Set decor around the window content
+ *
+ * the dimensions are independent for each edge and extend outward from the
+ * window content geometry. passing all dimensions as 0 disables this decor.
+ */
+void
+swc_window_set_decor(struct swc_window *window, uint32_t color, uint32_t top,
+                     uint32_t right, uint32_t bottom, uint32_t left);
+
+/**
  * Begin an interactive move of the specified window.
  */
 void
