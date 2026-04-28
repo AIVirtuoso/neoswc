@@ -272,7 +272,7 @@ handle_socket_data(int socket)
 			 */
 			if (ioctl(fd, EVIOCGRAB, (void*)1) == -1)
 			  {
-			    fprintf(stderr, "EVIOCGRAB %s: %s", path, strerr(errno));
+			    fprintf(stderr, "EVIOCGRAB %s: %s", path, strerror(errno));
 			    goto fail;
 			  }
 			#endif
@@ -471,7 +471,7 @@ setup_tty(int fd)
 		goto error0;
 	}
 
-#ifndef __OpenBSD__
+#if !defined (__OpenBSD__) && !defined (__FreeBSD__)
 	if (ioctl(fd, VT_SETMODE, &mode) == -1) {
 		perror("failed to set VT mode");
 		goto error1;
