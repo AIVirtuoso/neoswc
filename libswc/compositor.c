@@ -335,26 +335,6 @@ repaint_view(struct target *target, struct compositor_view *view,
 
 	if ((view->decor.top || view->decor.right || view->decor.bottom ||
 	     view->decor.left)) {
-		pixman_region32_t decor_region, content_region;
-		int32_t x = geom->x - (int32_t)view->decor.left;
-		int32_t y = geom->y - (int32_t)view->decor.top;
-		uint32_t width = geom->width + view->decor.left + view->decor.right;
-		uint32_t height = geom->height + view->decor.top + view->decor.bottom;
-
-		pixman_region32_init_rect(&decor_region, x, y, width, height);
-		pixman_region32_init_rect(&content_region, geom->x, geom->y,
-		                          geom->width, geom->height);
-		pixman_region32_subtract(&decor_region, &decor_region, &content_region);
-		pixman_region32_intersect(&decor_region, &decor_region, damage);
-		pixman_region32_subtract(&decor_region, &decor_region, &view->clip);
-		if (pixman_region32_not_empty(&decor_region)) {
-			pixman_region32_translate(&decor_region, -target_geom->x,
-			                          -target_geom->y);
-			wld_fill_region(swc.drm->renderer, view->decor.color,
-			                &decor_region);
-		}
-		pixman_region32_fini(&decor_region);
-		pixman_region32_fini(&content_region);
 		decor_repaint(swc.drm->renderer, target_geom, view, damage);
 	}
 }
@@ -1981,31 +1961,7 @@ compositor_render_to_shm(struct screen *screen)
 
 		if (view->decor.top || view->decor.right || view->decor.bottom ||
 		    view->decor.left) {
-			pixman_region32_t decor_region, content_region;
-			const struct swc_rectangle *geom = &view->base.geometry;
 			const struct swc_rectangle *target_geom = &screen->base.geometry;
-			int32_t x = geom->x - (int32_t)view->decor.left;
-			int32_t y = geom->y - (int32_t)view->decor.top;
-			uint32_t decor_width =
-			    geom->width + view->decor.left + view->decor.right;
-			uint32_t decor_height =
-			    geom->height + view->decor.top + view->decor.bottom;
-
-			pixman_region32_init_rect(&decor_region, x, y, decor_width,
-			                          decor_height);
-			pixman_region32_init_rect(&content_region, geom->x, geom->y,
-			                          geom->width, geom->height);
-			pixman_region32_subtract(&decor_region, &decor_region, &content_region);
-			pixman_region32_intersect(&decor_region, &decor_region, &damage);
-			pixman_region32_subtract(&decor_region, &decor_region, &view->clip);
-			if (pixman_region32_not_empty(&decor_region)) {
-				pixman_region32_translate(&decor_region, -target_geom->x,
-				                          -target_geom->y);
-				wld_fill_region(swc.shm->renderer, view->decor.color,
-				                &decor_region);
-			}
-			pixman_region32_fini(&decor_region);
-			pixman_region32_fini(&content_region);
 			decor_repaint(swc.shm->renderer, target_geom, view, &damage);
 		}
 	}

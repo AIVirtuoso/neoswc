@@ -442,6 +442,37 @@ struct swc_decor_text {
 };
 
 /**
+ * describes one wm-supplied decor pixel block
+ *
+ * swc copies the pixel data when swc_window_set_decor() is called, so caller
+ * doesnt need to keep it after the call returns
+ *
+ * pixel data is expected to be ARGB8888 with the provided stride.
+ */
+struct swc_decor_part {
+	uint32_t width, height;
+	uint32_t stride;
+	const void *data;
+};
+
+/**
+ * describes optional pixel blocks for the outer frame of a decor.
+ *
+ * corner parts are drawn once at their matching corner
+ * edge parts are tiled to fill the remaining edge area between corners.
+ */
+struct swc_decor_parts {
+	struct swc_decor_part top_left;
+	struct swc_decor_part top;
+	struct swc_decor_part top_right;
+	struct swc_decor_part left;
+	struct swc_decor_part right;
+	struct swc_decor_part bottom_left;
+	struct swc_decor_part bottom;
+	struct swc_decor_part bottom_right;
+};
+
+/**
  * describe decor around a window's edges.
  *
  * The edge sizes extend outward from the window content geometry. 
@@ -452,6 +483,7 @@ struct swc_decor_text {
 struct swc_decor {
 	uint32_t color;
 	uint32_t top, right, bottom, left;
+	const struct swc_decor_parts *parts;
 	struct swc_decor_text title;
 };
 

@@ -34,6 +34,12 @@ struct screen;
 struct wld_buffer;
 struct wld_font;
 
+struct decor_part_buffer {
+	void *data;
+	struct wld_buffer *buffer;
+	uint32_t width, height, stride;
+};
+
 struct swc_compositor {
 	struct pointer_handler *const pointer_handler;
 	struct {
@@ -93,6 +99,8 @@ struct compositor_view {
 		uint32_t color;
 		uint32_t top, right, bottom, left;
 		struct swc_decor_text text;
+		const struct swc_decor_parts *parts_key;
+		struct decor_part_buffer parts[8];
 		char *string;
 		char *font_name;
 		struct wld_font *font;
