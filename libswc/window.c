@@ -368,12 +368,11 @@ swc_window_set_border(struct swc_window *window, uint32_t inner_border_color,
 }
 
 EXPORT void
-swc_window_set_decor(struct swc_window *window, uint32_t color, uint32_t top,
-                     uint32_t right, uint32_t bottom, uint32_t left)
+swc_window_set_decor(struct swc_window *window, const struct swc_decor *decor)
 {
 	struct compositor_view *view = INTERNAL(window)->view;
 
-	compositor_view_set_decor(view, color, top, right, bottom, left);
+	compositor_view_set_decor(view, decor);
 }
 
 EXPORT void

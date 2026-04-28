@@ -32,6 +32,7 @@
 
 struct screen;
 struct wld_buffer;
+struct wld_font;
 
 struct swc_compositor {
 	struct pointer_handler *const pointer_handler;
@@ -91,6 +92,10 @@ struct compositor_view {
 	struct {
 		uint32_t color;
 		uint32_t top, right, bottom, left;
+		struct swc_decor_text text;
+		char *string;
+		char *font_name;
+		struct wld_font *font;
 		bool damaged;
 	} decor;
 
@@ -129,9 +134,10 @@ void
 compositor_view_set_border_width(struct compositor_view *view,
                                  uint32_t outwidth, uint32_t inwidth);
 void
-compositor_view_set_decor(struct compositor_view *view, uint32_t color,
-                          uint32_t top, uint32_t right, uint32_t bottom,
-                          uint32_t left);
+compositor_view_set_decor(struct compositor_view *view,
+                           const struct swc_decor *decor);
+void
+compositor_view_damage_decor(struct compositor_view *view);
 
 /**
  * get the current composited buffer for a screen for screenshotss.

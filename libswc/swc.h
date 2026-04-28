@@ -390,15 +390,83 @@ swc_window_set_border(struct swc_window *window, uint32_t inner_border_color,
                       uint32_t inner_border_width, uint32_t outer_border_color,
                       uint32_t outer_border_width);
 
+/*window decor things*/
+
 /**
- * Set decor around the window content
+ * Select which decor edge a text slot is rendered on
+ */
+enum swc_decor_edge {
+	SWC_DECOR_EDGE_TOP,
+	SWC_DECOR_EDGE_RIGHT,
+	SWC_DECOR_EDGE_BOTTOM,
+	SWC_DECOR_EDGE_LEFT,
+};
+
+/**
+ * choose text alignment within the selected decor edge.
+ *
+ * for top and bottom edges, alignment is horizontal
+ * for left and right edges, alignment is vertical
+ */
+enum swc_decor_align {
+	SWC_DECOR_ALIGN_START,
+	SWC_DECOR_ALIGN_CENTER,
+	SWC_DECOR_ALIGN_END,
+};
+
+/**
+ * describe a window decor text slot.
+ *
+ * if enabled is false, no text is drawn.
+ *
+ * the wm supplies some string to be rendered in this decor slot. swc
+ * copies the string when swc_window_set_decor() is called, so caller doesnt
+ * need to keep it after the call returns.
+ *
+ * for top and bottom edges, text is drawn horizontally
+ * for left and right edges, text is drawn as stacked glyphs, one glyph
+ * per row.
+ *
+ * the font field accepts some fontconfig pattern such as "sans-serif:size=10".
+ * if font is NULL, a default font is used (dont be a loser, pick a cool font)
+ */
+struct swc_decor_text {
+	bool enabled;
+	enum swc_decor_edge edge;
+	enum swc_decor_align align;
+	const char *string;
+	uint32_t color;
+	uint32_t padding;
+	int32_t offset_x, offset_y;
+	const char *font;
+};
+
+/**
+ * describe decor around a window's edges.
+ *
+ * The edge sizes extend outward from the window content geometry. 
+ * if you put 0 it won't be visible
+ *
+ * the title field controls an optional text slot rendered on one edge
+ */
+struct swc_decor {
+	uint32_t color;
+	uint32_t top, right, bottom, left;
+	struct swc_decor_text title;
+};
+
+/**
+ * set window decor around the window.
  *
  * the dimensions are independent for each edge and extend outward from the
- * window content geometry. passing all dimensions as 0 disables this decor.
+ * window content geometry.
+ *
+ * swc copies any decor text string needed by the configuration
+ *
+ * passing NULL disables window dcor
  */
 void
-swc_window_set_decor(struct swc_window *window, uint32_t color, uint32_t top,
-                     uint32_t right, uint32_t bottom, uint32_t left);
+swc_window_set_decor(struct swc_window *window, const struct swc_decor *decor);
 
 /**
  * Begin an interactive move of the specified window.

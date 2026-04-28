@@ -29,6 +29,7 @@
 
 #include "compositor.h"
 #include "data_device_manager.h"
+#include "decor.h"
 #include "drm.h"
 #include "event.h"
 #include "internal.h"
@@ -354,6 +355,7 @@ repaint_view(struct target *target, struct compositor_view *view,
 		}
 		pixman_region32_fini(&decor_region);
 		pixman_region32_fini(&content_region);
+		decor_repaint(swc.drm->renderer, target_geom, view, damage);
 	}
 }
 
@@ -1300,6 +1302,7 @@ compositor_create_view(struct surface *surface)
 	view->decor.right = 0;
 	view->decor.bottom = 0;
 	view->decor.left = 0;
+	decor_view_initialize(view);
 	view->decor.damaged = false;
 	pixman_region32_init(&view->clip);
 	wl_signal_init(&view->destroy_signal);
@@ -1316,6 +1319,7 @@ compositor_view_destroy(struct compositor_view *view)
 	compositor_view_hide(view);
 	surface_set_view(view->surface, NULL);
 	view_finalize(&view->base);
+	decor_view_finalize(view);
 	pixman_region32_fini(&view->clip);
 	wl_list_remove(&view->link);
 	free(view);
@@ -1467,24 +1471,23 @@ compositor_view_set_border_color(struct compositor_view *view,
 }
 
 void
-compositor_view_set_decor(struct compositor_view *view, uint32_t color,
-                          uint32_t top, uint32_t right, uint32_t bottom,
-                          uint32_t left)
+compositor_view_set_decor(struct compositor_view *view,
+                            const struct swc_decor *decor)
 {
-	if (view->decor.color == color && view->decor.top == top &&
-	    view->decor.right == right && view->decor.bottom == bottom &&
-	    view->decor.left == left) {
+	decor_view_set(view, decor);
+	update_extents(view);
+	update(&view->base);
+}
+
+void
+compositor_view_damage_decor(struct compositor_view *view)
+{
+	if (!view->decor.top && !view->decor.right && !view->decor.bottom &&
+	    !view->decor.left) {
 		return;
 	}
 
-	view->decor.color = color;
-	view->decor.top = top;
-	view->decor.right = right;
-	view->decor.bottom = bottom;
-	view->decor.left = left;
-	view->decor.damaged = true;
-
-	update_extents(view);
+	decor_view_damage(view);
 	update(&view->base);
 }
 
@@ -1799,6 +1802,9 @@ compositor_initialize(void)
 	compositor.updating = false;
 	compositor.zoom = 1.0f;
 	compositor.zoom_buffer = NULL;
+	if (!decor_initialize()) {
+		return false;
+	}
 	pixman_region32_init(&compositor.damage);
 	pixman_region32_init(&compositor.opaque);
 	wl_list_init(&compositor.views);
@@ -1834,6 +1840,7 @@ compositor_finalize(void)
 		wld_buffer_unreference(compositor.zoom_buffer);
 		compositor.zoom_buffer = NULL;
 	}
+	decor_finalize();
 	pixman_region32_fini(&compositor.damage);
 	pixman_region32_fini(&compositor.opaque);
 	wl_global_destroy(compositor.global);
@@ -1970,6 +1977,36 @@ compositor_render_to_shm(struct screen *screen)
 			pixman_region32_fini(&in_rect);
 			pixman_region32_fini(&out_border);
 			pixman_region32_fini(&in_border);
+		}
+
+		if (view->decor.top || view->decor.right || view->decor.bottom ||
+		    view->decor.left) {
+			pixman_region32_t decor_region, content_region;
+			const struct swc_rectangle *geom = &view->base.geometry;
+			const struct swc_rectangle *target_geom = &screen->base.geometry;
+			int32_t x = geom->x - (int32_t)view->decor.left;
+			int32_t y = geom->y - (int32_t)view->decor.top;
+			uint32_t decor_width =
+			    geom->width + view->decor.left + view->decor.right;
+			uint32_t decor_height =
+			    geom->height + view->decor.top + view->decor.bottom;
+
+			pixman_region32_init_rect(&decor_region, x, y, decor_width,
+			                          decor_height);
+			pixman_region32_init_rect(&content_region, geom->x, geom->y,
+			                          geom->width, geom->height);
+			pixman_region32_subtract(&decor_region, &decor_region, &content_region);
+			pixman_region32_intersect(&decor_region, &decor_region, &damage);
+			pixman_region32_subtract(&decor_region, &decor_region, &view->clip);
+			if (pixman_region32_not_empty(&decor_region)) {
+				pixman_region32_translate(&decor_region, -target_geom->x,
+				                          -target_geom->y);
+				wld_fill_region(swc.shm->renderer, view->decor.color,
+				                &decor_region);
+			}
+			pixman_region32_fini(&decor_region);
+			pixman_region32_fini(&content_region);
+			decor_repaint(swc.shm->renderer, target_geom, view, &damage);
 		}
 	}
 
