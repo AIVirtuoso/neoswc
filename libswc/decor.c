@@ -41,6 +41,7 @@ decor_title_length(struct wld_font *font, const char *title, uint32_t max_width)
 	while (title[len]) {
 		uint32_t next = len + 1;
 
+		/* we skip utf-8 continuation bytes */
 		while ((title[next] & 0xc0) == 0x80) {
 			next++;
 		}
@@ -262,6 +263,9 @@ close_decor_string(struct compositor_view *view)
 	view->decor.string = NULL;
 }
 
+/* draw decor part by tiling it across the target region.
+ * the part buffer is repeated to fill the entirety of some width x height area,
+ * but only damaged regions are actually rendred*/
 static void
 draw_decor_part(struct wld_renderer *renderer,
                 const struct swc_rectangle *target_geom,
@@ -450,6 +454,10 @@ decor_repaint(struct wld_renderer *renderer,
 		return;
 	}
 
+	/* calculate text position based on which edge
+	 * the decor is on. base_x base_y is the top-left corner,
+	 * max_width is available space
+	 * decor_size is perpendicular dimension of the edge where text is being drawn */
 	switch (text->edge) {
 	case SWC_DECOR_EDGE_TOP:
 		if (!view->decor.top) {
