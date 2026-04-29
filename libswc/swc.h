@@ -38,11 +38,11 @@ struct wl_event_loop;
 struct wld_buffer;
 
 /**
- * gett the current cursor position
+ * Get the current cursor position.
  *
  * The returned coordinates are in compositor-global space, in wl_fixed_t
  * (24.8) fixed-point units, but exposed as raw int32_t to avoid needing
- * wayland headers
+ * wayland headers.
  *
  */
 bool
@@ -86,7 +86,7 @@ enum swc_cursor_mode {
 };
 
 /**
- * override the compositor's internal cursor
+ * Override the compositor's internal cursor.
  *
  * this is intended for window managers to show mode cursors
  * (move/resize/select) like the ones in hevel If a client has set its own
@@ -96,7 +96,7 @@ void
 swc_set_cursor(enum swc_cursor_kind kind);
 
 /**
- * control whether client cursor surfaces are honored
+ * Control whether client cursor surfaces are honored.
  */
 void
 swc_set_cursor_mode(enum swc_cursor_mode mode);
@@ -393,7 +393,7 @@ swc_window_set_border(struct swc_window *window, uint32_t inner_border_color,
 /*window decor things*/
 
 /**
- * Select which decor edge a text slot is rendered on
+ * Select which decor edge a text slot is rendered on.
  */
 enum swc_decor_edge {
 	SWC_DECOR_EDGE_TOP,
@@ -403,7 +403,7 @@ enum swc_decor_edge {
 };
 
 /**
- * choose text alignment within the selected decor edge.
+ * Choose text alignment within the selected decor edge.
  *
  * for top and bottom edges, alignment is horizontal
  * for left and right edges, alignment is vertical
@@ -415,12 +415,12 @@ enum swc_decor_align {
 };
 
 /**
- * describe a window decor text slot.
+ * Describe a window decor text slot.
  *
  * if enabled is false, no text is drawn.
  *
  * the wm supplies some string to be rendered in this decor slot. swc
- * copies the string when swc_window_set_decor() is called, so caller doesnt
+ * copies the string when swc_window_set_decor() is called, so caller doesn't
  * need to keep it after the call returns.
  *
  * for top and bottom edges, text is drawn horizontally
@@ -428,7 +428,7 @@ enum swc_decor_align {
  * per row.
  *
  * the font field accepts some fontconfig pattern such as "sans-serif:size=10".
- * if font is NULL, a default font is used (dont be a loser, pick a cool font)
+ * if font is NULL, a default font is used.
  */
 struct swc_decor_text {
 	bool enabled;
@@ -442,12 +442,12 @@ struct swc_decor_text {
 };
 
 /**
- * describes one wm-supplied decor pixel block
+ * Describes one wm-supplied decor pixel block.
  *
  * swc copies the pixel data when swc_window_set_decor() is called, so caller
- * doesnt need to keep it after the call returns
+ * doesn't need to keep it after the call returns.
  *
- * pixel data is expected to be ARGB8888 with the provided stride.
+ * Pixel data is expected to be ARGB8888 with the provided stride.
  */
 struct swc_decor_part {
 	uint32_t width, height;
@@ -456,7 +456,7 @@ struct swc_decor_part {
 };
 
 /**
- * describes optional pixel blocks for the outer frame of a decor.
+ * Describes optional pixel blocks for the outer frame of a decor.
  *
  * corner parts are drawn once at their matching corner
  * edge parts are tiled to fill the remaining edge area between corners.
@@ -473,12 +473,12 @@ struct swc_decor_parts {
 };
 
 /**
- * describe decor around a window's edges.
+ * Describe decor around a window's edges.
  *
  * The edge sizes extend outward from the window content geometry. 
- * if you put 0 it won't be visible
+ * if you put 0 it won't be visible.
  *
- * the title field controls an optional text slot rendered on one edge
+ * The title field controls an optional text slot rendered on one edge.
  */
 struct swc_decor {
 	uint32_t color;
@@ -488,14 +488,14 @@ struct swc_decor {
 };
 
 /**
- * set window decor around the window.
+ * Set window decor around the window.
  *
  * the dimensions are independent for each edge and extend outward from the
  * window content geometry.
  *
- * swc copies any decor text string needed by the configuration
+ * swc copies any decor text string needed by the configuration.
  *
- * passing NULL disables window dcor
+ * passing NULL disables window decor.
  */
 void
 swc_window_set_decor(struct swc_window *window, const struct swc_decor *decor);
