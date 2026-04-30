@@ -70,10 +70,15 @@ handle_focus_view_destroy(struct wl_listener *listener, void *data)
 {
 	struct input_focus *input_focus =
 	    wl_container_of(listener, input_focus, view_destroy_listener);
+	struct compositor_view *view = input_focus->view;
 
-	/* XXX: Should this call unfocus? */
-	wl_list_insert_list(&input_focus->inactive, &input_focus->active);
-	wl_list_init(&input_focus->active);
+	(void)data;
+
+	/* send the leave event */
+	if (view) {
+		unfocus(input_focus);
+	}
+
 	input_focus->client = NULL;
 	input_focus->view = NULL;
 }
