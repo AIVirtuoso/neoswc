@@ -153,13 +153,30 @@ update_usable_geometry(struct layer_surface *surface)
 static void
 restack_layer(struct layer_surface *surface)
 {
-	bool always_top = surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP ||
-	                  surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+	uint32_t stack_layer = STACK_LAYER_NORMAL;
+	bool always_top = false;
+
+	switch (surface->current.layer) {
+	case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+		stack_layer = STACK_LAYER_BACKGROUND;
+		break;
+	case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+		stack_layer = STACK_LAYER_BOTTOM;
+		break;
+	case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+		stack_layer = STACK_LAYER_TOP;
+		always_top = true;
+		break;
+	case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+		stack_layer = STACK_LAYER_OVERLAY;
+		always_top = true;
+		break;
+	default:
+		break;
+	}
 
 	surface->view->always_top = always_top;
-	if (always_top) {
-		raise_window_top(surface->view);
-	}
+	compositor_view_set_stack_layer(surface->view, stack_layer, true);
 }
 
 static void

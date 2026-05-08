@@ -75,6 +75,9 @@ struct compositor_view {
 	/* Whether or not to make it always be on top of other windows */
 	bool always_top;
 
+	/* Global stacking layer for this view */
+	uint32_t stack_layer;
+
 	/* The box that the surface covers (including it's border). */
 	pixman_box32_t extents;
 
@@ -165,5 +168,17 @@ void
 raise_window(struct compositor_view *view);
 void
 raise_window_top(struct compositor_view *view);
+
+enum compositor_stack_layer {
+	STACK_LAYER_BACKGROUND = 0,
+	STACK_LAYER_BOTTOM = 1,
+	STACK_LAYER_NORMAL = 2,
+	STACK_LAYER_TOP = 3,
+	STACK_LAYER_OVERLAY = 4,
+};
+
+void
+compositor_view_set_stack_layer(struct compositor_view *view, uint32_t layer,
+	                            bool raise);
 
 #endif
