@@ -1031,7 +1031,8 @@ static void
 restack_view_for_layer(struct compositor_view *view, bool raise)
 {
 	struct compositor_view *other;
-	struct wl_list *insert_after = compositor.views.prev;
+	struct wl_list *insert_after = &compositor.views;
+	bool found_same = false;
 
 	wl_list_for_each(other, &compositor.views, link)
 	{
@@ -1045,6 +1046,7 @@ restack_view_for_layer(struct compositor_view *view, bool raise)
 		}
 
 		if (other->stack_layer == view->stack_layer) {
+			found_same = true;
 			if (raise) {
 				insert_after = other->link.prev;
 			} else {
@@ -1055,6 +1057,17 @@ restack_view_for_layer(struct compositor_view *view, bool raise)
 
 		insert_after = other->link.prev;
 		break;
+	}
+
+	if (!found_same && !raise && insert_after == &compositor.views) {
+		insert_after = compositor.views.prev;
+		if (insert_after == &view->link) {
+			insert_after = insert_after->prev;
+		}
+	}
+
+	if (insert_after == &view->link) {
+		insert_after = insert_after->prev;
 	}
 
 	wl_list_remove(&view->link);
