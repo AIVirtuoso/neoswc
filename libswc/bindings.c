@@ -260,6 +260,35 @@ swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t value,
 	return 0;
 }
 
+EXPORT void
+swc_remove_binding(enum swc_binding_type type, uint32_t modifiers,
+                   uint32_t value)
+{
+	struct wl_array *bindings;
+	switch (type) {
+	case SWC_BINDING_KEY:
+		bindings = &key_bindings;
+		break;
+	case SWC_BINDING_BUTTON:
+		bindings = &button_bindings;
+		break;
+	default:
+		return;
+	}
+
+	struct binding *b = find_binding(bindings, modifiers, value);
+	if (!b) {
+		return;
+	}
+
+	struct binding *last = (struct binding *)((char *)bindings->data +
+	                                          bindings->size - sizeof(*b));
+	if (b != last) {
+		*b = *last;
+	}
+	bindings->size -= sizeof(*b);
+}
+
 EXPORT int
 swc_add_axis_binding(uint32_t modifiers, uint32_t axis,
                      swc_axis_binding_handler handler, void *data)

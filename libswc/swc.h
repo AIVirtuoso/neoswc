@@ -475,7 +475,7 @@ struct swc_decor_parts {
 /**
  * Describe decor around a window's edges.
  *
- * The edge sizes extend outward from the window content geometry. 
+ * The edge sizes extend outward from the window content geometry.
  * if you put 0 it won't be visible.
  *
  * The title field controls an optional text slot rendered on one edge.
@@ -579,6 +579,14 @@ typedef void (*swc_axis_binding_handler)(void *data, uint32_t time,
 int
 swc_add_binding(enum swc_binding_type type, uint32_t modifiers, uint32_t value,
                 swc_binding_handler handler, void *data);
+
+/**
+ * Unregister a registered input binding.
+ *
+ */
+void
+swc_remove_binding(enum swc_binding_type type, uint32_t modifiers,
+                   uint32_t value);
 
 /**
  * register a new pointer axis binding
