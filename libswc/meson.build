@@ -34,7 +34,6 @@ libswc_src = files(
   'swc.c',
   'util.c',
   'view.c',
-  'wallpaper.c',
   'wayland_buffer.c',
   'window.c',
   'xdg_decoration.c',

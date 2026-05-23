@@ -17,10 +17,9 @@ neu features
 - experimental subsurface support
 - fullscreen
 - double window borders
-- wallpapers
 - screenshots
 - evdev-only input backend
-- partial layer shell support
+- layer shell support
 - window decorations
 
 neuswc is in active development, we plan to add many more features, and increase compatibility with new wayland protocols.

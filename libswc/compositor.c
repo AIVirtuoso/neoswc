@@ -45,7 +45,6 @@
 #include "swc.h"
 #include "util.h"
 #include "view.h"
-#include "wallpaper.h"
 #include "window.h"
 
 #include <assert.h>
@@ -56,6 +55,8 @@
 #include <wld/drm.h>
 #include <wld/wld.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
+
+#define DEFAULT_BG 0xff000000u
 
 static inline int32_t
 clamp_i32(int64_t v)
@@ -402,18 +403,10 @@ renderer_repaint(struct target *target, pixman_region32_t *damage,
 	wld_set_target_surface(swc.drm->renderer, target->surface);
 
 	if (pixman_region32_not_empty(base_damage)) {
-		struct wld_buffer *background = swc_wallpaper_buffer_for_screen(screen);
-
 		pixman_region32_translate(base_damage, -target->view->geometry.x,
 		                          -target->view->geometry.y);
-
-		if (background) {
-			wld_copy_region(swc.drm->renderer, background, 0, 0, base_damage);
-		}
-
-		else {
-			wld_fill_region(swc.drm->renderer, bgcolor, base_damage);
-		}
+		wld_fill_region(swc.drm->renderer, DEFAULT_BG,
+		                base_damage);
 	}
 
 	wl_list_for_each_reverse(view, views, link)
@@ -749,7 +742,6 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 	int32_t cx = screen_x + width / 2;
 	int32_t cy = screen_y + height / 2;
 	struct compositor_view *view;
-	struct wld_buffer *background;
 	struct wld_buffer *buffer = zoom_buffer_for_screen(screen);
 	if (!buffer) {
 		return NULL;
@@ -762,12 +754,7 @@ render_zoomed_to_shm(struct screen *screen, float zoom)
 
 	pixman_region32_t full;
 	pixman_region32_init_rect(&full, 0, 0, width, height);
-	background = swc_wallpaper_buffer_for_screen(screen);
-	if (background) {
-		wld_copy_region(swc.shm->renderer, background, 0, 0, &full);
-	} else {
-		wld_fill_region(swc.shm->renderer, bgcolor, &full);
-	}
+	wld_fill_region(swc.shm->renderer, DEFAULT_BG, &full);
 	pixman_region32_fini(&full);
 	wld_flush(swc.shm->renderer);
 
@@ -1923,7 +1910,6 @@ compositor_render_to_shm(struct screen *screen)
 	pixman_region32_t region;
 	pixman_region32_t damage;
 	uint32_t caps;
-	struct wld_buffer *background;
 
 	/* create shm buf */
 	buffer = wld_create_buffer(swc.shm->context, width, height,
@@ -1945,12 +1931,7 @@ compositor_render_to_shm(struct screen *screen)
 	                          screen->base.geometry.y, width, height);
 
 	/* background */
-	background = swc_wallpaper_buffer_for_screen(screen);
-	if (background) {
-		wld_copy_region(swc.shm->renderer, background, 0, 0, &region);
-	} else {
-		wld_fill_region(swc.shm->renderer, bgcolor, &region);
-	}
+	wld_fill_region(swc.shm->renderer, DEFAULT_BG, &region);
 
 	wl_list_for_each_reverse(view, &compositor.views, link)
 	{

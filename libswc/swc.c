@@ -42,7 +42,6 @@
 #include "snap.h"
 #include "subcompositor.h"
 #include "util.h"
-#include "wallpaper.h"
 #include "window.h"
 #include "xdg_decoration.h"
 #include "xdg_output.h"
@@ -247,42 +246,34 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error15;
 	}
 
-	swc.wallpaper_manager = swc_wallpaper_manager_create(display);
-	if (!swc.wallpaper_manager) {
-		ERROR("Could not initialize wallpaper manager\n");
-		goto error16;
-	}
-
 #ifdef ENABLE_XWAYLAND
 	if (!xserver_initialize()) {
 		ERROR("Could not initialize xwayland\n");
-		goto error17;
+		goto error16;
 	}
 #endif
 
 	swc.select_manager = select_manager_create(display);
 	if (!swc.select_manager) {
 		ERROR("Could not initialize select manager\n");
-		goto error18;
+		goto error17;
 	}
 
 	swc.xdg_output_manager = xdg_output_manager_create(display);
 	if (!swc.xdg_output_manager) {
 		ERROR("Could not initialize XDG output manager\n");
-		goto error18;
+		goto error17;
 	}
 
 	setup_compositor();
 
 	return true;
 
-error18:
+error17:
 	wl_global_destroy(swc.select_manager);
 #ifdef ENABLE_XWAYLAND
-error17:
-	wl_global_destroy(swc.wallpaper_manager);
-#endif
 error16:
+#endif
 	wl_global_destroy(swc.snap_manager);
 error15:
 	wl_global_destroy(swc.panel_manager);
@@ -325,7 +316,6 @@ swc_finalize(void)
 	xserver_finalize();
 #endif
 	wl_global_destroy(swc.xdg_output_manager);
-	wl_global_destroy(swc.wallpaper_manager);
 	wl_global_destroy(swc.snap_manager);
 	wl_global_destroy(swc.select_manager);
 	wl_global_destroy(swc.panel_manager);
