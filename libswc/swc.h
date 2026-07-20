@@ -551,6 +551,11 @@ swc_window_stack(struct swc_window *window, int32_t direction);
 
 /* }}} */
 
+/* Keyboard repeat rate (characters per second) and delay (ms) definitions.
+ * Exposed as extern so compositors can set them. 
+ */
+extern int32_t swc_repeat_rate, swc_repeat_delay;
+
 /* Bindings {{{ */
 
 enum {
