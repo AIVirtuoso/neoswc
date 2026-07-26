@@ -1377,6 +1377,10 @@ compositor_view_set_parent(struct compositor_view *view,
 {
 	view->parent = parent;
 
+	if (!parent) {
+		return;
+	}
+
 	if (parent->visible) {
 		compositor_view_show(view);
 	} else {
@@ -1925,7 +1929,7 @@ compositor_render_to_shm(struct screen *screen)
 		return NULL;
 	}
 
-	/* set reigon */
+	/* set region */
 	pixman_region32_init_rect(&region, 0, 0, width, height);
 	pixman_region32_init_rect(&damage, screen->base.geometry.x,
 	                          screen->base.geometry.y, width, height);

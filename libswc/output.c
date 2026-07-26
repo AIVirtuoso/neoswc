@@ -57,6 +57,7 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 
 	if (version >= 4) {
 		wl_output_send_name(resource, output->name);
+		wl_output_send_description(resource, output->name);
 	}
 
 	if (version >= 2) {
@@ -73,7 +74,7 @@ output_new(drmModeConnectorPtr connector)
 	uint32_t i;
 
 	if (!(output = malloc(sizeof(*output)))) {
-		ERROR("Failed to allocated output\n");
+		ERROR("Failed to allocate output\n");
 		goto error0;
 	}
 
@@ -135,6 +136,12 @@ error0:
 void
 output_destroy(struct output *output)
 {
+	struct wl_resource *resource, *tmp;
+
+	wl_list_for_each_safe(resource, tmp, &output->resources, link)
+		wl_resource_destroy(resource);
+	pixman_region32_fini(&output->current_damage);
+	pixman_region32_fini(&output->previous_damage);
 	wl_array_release(&output->modes);
 	wl_global_destroy(output->global);
 	free(output);

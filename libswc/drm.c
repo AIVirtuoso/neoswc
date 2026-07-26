@@ -196,6 +196,9 @@ find_available_crtc(drmModeRes *resources, drmModeConnector *connector,
 
 	for (i = 0; i < connector->count_encoders; ++i) {
 		encoder = drmModeGetEncoder(swc.drm->fd, connector->encoders[i]);
+		if (!encoder) {
+			continue;
+		}
 		possible_crtcs = encoder->possible_crtcs;
 		drmModeFreeEncoder(encoder);
 
@@ -380,6 +383,10 @@ drm_create_screens(struct wl_list *screens)
 
 	resources = drmModeGetResources(swc.drm->fd);
 	if (!resources) {
+		struct plane *p, *ptmp;
+
+		wl_list_for_each_safe(p, ptmp, &planes, link)
+			plane_destroy(p);
 		ERROR("Could not get DRM resources\n");
 		return false;
 	}

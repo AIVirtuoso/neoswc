@@ -240,7 +240,8 @@ resize(struct wl_client *client, struct wl_resource *resource, int32_t size)
 	if (st.st_size < size) {
 		if (ftruncate(pool->fd, size) != 0) {
 			int saved = errno;
-			/* some clients seal memfd  if size is already fine, allo */
+			/* some clients seal memfd if size is already fine,
+		 * alloc will fail */
 			if ((saved == EPERM || saved == EACCES) &&
 			    fstat(pool->fd, &st) == 0 && st.st_size >= size) {
 				goto remap;

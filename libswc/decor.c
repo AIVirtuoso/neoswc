@@ -265,7 +265,7 @@ close_decor_string(struct compositor_view *view)
 
 /* draw decor part by tiling it across the target region.
  * the part buffer is repeated to fill the entirety of some width x height area,
- * but only damaged regions are actually rendred*/
+ * but only damaged regions are actually rendered */
 static void
 draw_decor_part(struct wld_renderer *renderer,
                 const struct swc_rectangle *target_geom,

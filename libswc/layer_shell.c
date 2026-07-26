@@ -424,7 +424,7 @@ handle_surface_commit(struct wl_listener *listener, void *data)
 		update_usable_geometry(surface);
 	}
 
-	/* mke sure that the inital commit and also any later state change gets a fresh
+	/* Make sure that the initial commit and also any later state change gets a fresh
 	 * configure  */
 	if (!surface->configured || state_changed) {
 		send_configure(surface);
@@ -454,7 +454,7 @@ modify(struct screen_modifier *modifier, const struct swc_rectangle *geom,
 		return;
 	}
 
-	/* shrink usuable area*/
+	/* shrink usable area */
 	switch (exclusive_edge(surface)) {
 	case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
 		box.y1 = MAX(box.y1, geom->y + size);
@@ -529,7 +529,6 @@ layer_surface_new(struct wl_client *client, uint32_t version, uint32_t id,
 
 	layer_surface->screen = screen;
 	layer_surface->current.layer = layer;
-	layer_surface->pending = layer_surface->current;
 	layer_surface->current.exclusive_zone = 0;
 	layer_surface->current.exclusive_edge = 0;
 	layer_surface->current.keyboard_interactivity =

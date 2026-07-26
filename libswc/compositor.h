@@ -151,7 +151,7 @@ void
 compositor_view_damage_decor(struct compositor_view *view);
 
 /**
- * get the current composited buffer for a screen for screenshotss.
+ * get the current composited buffer for a screen for screenshots.
  * returns null if no buffer
  */
 struct wld_buffer *

@@ -287,7 +287,7 @@ error2:
 error1:
 	free(keyboard);
 error0:
-	return false;
+	return NULL;
 }
 
 void
