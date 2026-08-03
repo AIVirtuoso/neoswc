@@ -518,6 +518,33 @@ struct river_binding {
 };
 
 /*
+ * A binding press is window management state, not a side channel.
+ *
+ * "This event will be followed by a manage_start event after all other new
+ * state has been sent by the server" -- so pressed/released are flushed at the
+ * top of a sequence, and the press is what schedules that sequence. river does
+ * the same: XkbBinding.pressed() sets a pending state change and calls
+ * server.wm.dirtyWindowing().
+ *
+ * Sending the event straight from swc's callback instead leaves the manager
+ * holding a press with no sequence to act in. rill registers its bindings, the
+ * compositor matches them, the event arrives -- and nothing happens, because
+ * every action a manager takes is a manage-sequence request.
+ *
+ * Queued rather than a flag per binding: swc keeps delivering input while a
+ * sequence is in flight (river pauses input processing instead, which swc
+ * gives no way to do), so a press and its release can both arrive before the
+ * next flush. A queue keeps them in order and keeps them both.
+ */
+struct binding_event {
+	struct wl_list link;
+	struct river_binding *binding;
+	uint32_t state;
+};
+
+static struct wl_list pending_binding_events;
+
+/*
  * river uses the X11 mask convention (shift 1, ctrl 4, mod1 8, mod4 64); swc
  * has its own (ctrl 1, alt 2, logo 4, shift 8). Neither is a subset of the
  * other, so translate rather than cast.
@@ -548,6 +575,7 @@ static void
 binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 {
 	struct river_binding *binding = data;
+	struct binding_event *event;
 
 	(void)time;
 	(void)value;
@@ -560,19 +588,56 @@ binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 		return;
 	}
 
-	if (binding->type == SWC_BINDING_BUTTON) {
-		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-			river_pointer_binding_v1_send_pressed(binding->resource);
-		} else {
-			river_pointer_binding_v1_send_released(binding->resource);
-		}
+	event = calloc(1, sizeof(*event));
+	if (!event) {
 		return;
 	}
+	event->binding = binding;
+	event->state = state;
+	wl_list_insert(pending_binding_events.prev, &event->link);
 
-	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-		river_xkb_binding_v1_send_pressed(binding->resource);
-	} else {
-		river_xkb_binding_v1_send_released(binding->resource);
+	schedule_sequence();
+}
+
+/* Drained at the top of a sequence, immediately before manage_start. */
+static void
+flush_binding_events(void)
+{
+	struct binding_event *event, *tmp;
+
+	wl_list_for_each_safe (event, tmp, &pending_binding_events, link) {
+		struct river_binding *binding = event->binding;
+
+		if (binding->resource) {
+			if (binding->type == SWC_BINDING_BUTTON) {
+				if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+					river_pointer_binding_v1_send_pressed(binding->resource);
+				} else {
+					river_pointer_binding_v1_send_released(binding->resource);
+				}
+			} else if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+				river_xkb_binding_v1_send_pressed(binding->resource);
+			} else {
+				river_xkb_binding_v1_send_released(binding->resource);
+			}
+		}
+
+		wl_list_remove(&event->link);
+		free(event);
+	}
+}
+
+/* A binding going away takes its queued events with it. */
+static void
+drop_binding_events(struct river_binding *binding)
+{
+	struct binding_event *event, *tmp;
+
+	wl_list_for_each_safe (event, tmp, &pending_binding_events, link) {
+		if (event->binding == binding) {
+			wl_list_remove(&event->link);
+			free(event);
+		}
 	}
 }
 
@@ -667,6 +732,7 @@ binding_resource_destroy(struct wl_resource *resource)
 		return;
 	}
 	binding_unregister(binding);
+	drop_binding_events(binding);
 	binding->resource = NULL;
 	free(binding);
 }
@@ -1469,6 +1535,9 @@ begin_manage(void)
 		window->has_proposal = false;
 	}
 
+	/* Last, so manage_start immediately follows the state it belongs to. */
+	flush_binding_events();
+
 	wm.dirty = false;
 	wm.phase = PHASE_MANAGE;
 	river_window_manager_v1_send_manage_start(wm.manager);
@@ -1758,6 +1827,7 @@ river_wm_create(struct wl_display *display)
 	wm.phase = PHASE_IDLE;
 	wl_list_init(&wm.windows);
 	wl_list_init(&wm.outputs);
+	wl_list_init(&pending_binding_events);
 
 	wm.global = wl_global_create(display, &river_window_manager_v1_interface,
 	                             5, NULL, bind_manager);

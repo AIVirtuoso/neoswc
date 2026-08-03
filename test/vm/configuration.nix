@@ -415,7 +415,15 @@ in
       # After the hold, so keys injected by the host in the meantime are seen.
       # Compositor-side view, which is the only view when the manager is rill:
       # what it asked swc for, and what actually fired.
-      say "bindings registered: $(grep -E '^neoswc: (key|pointer) binding' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
+      # After the hold, so a binding action the host triggered is visible. rill
+      # binds Super+q to close_window, so the count dropping is the proof that
+      # the manager acted -- not merely that the event was delivered.
+      # rill binds Super+q to close_window and closes the *focused* window,
+      # which is the newest -- a wev, not a foot. Count the windows the
+      # compositor tore down instead of guessing which client it was.
+      say "windows closed: $(grep -c 'Finalizing window' /tmp/neoswc.log 2>/dev/null || true)"
+      say "clients after bindings: $(ps -eo comm | grep -c '^foot$') foot, $(pgrep -c -x wev || true) wev"
+      say "bindings registered: $(grep -cE '^neoswc: (key|pointer) binding registered' /tmp/neoswc.log 2>/dev/null || true)"
       say "bindings fired: $(grep -c 'binding 0x.* fired' /tmp/neoswc.log 2>/dev/null || true)"
       say "binding fire log: $(grep 'fired' /tmp/neoswc.log 2>/dev/null | tail -8 | tr '\n' '|')"
       say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || true) press(es)"
