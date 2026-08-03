@@ -104,35 +104,7 @@ struct window_impl {
 	void (*set_mode)(struct window *window, enum window_mode mode);
 };
 
-/*
- * Cohort configures.
- *
- * Outside a transaction, windows behave exactly as they always have: each
- * window's pending move is applied the moment its own buffer arrives. That
- * keeps existing swc compositors working unchanged.
- *
- * Between window_transaction_begin() and window_transaction_commit(), any
- * window reconfigured through swc_window_set_size()/set_position() is enrolled
- * in the open cohort instead, and nothing is applied until the cohort
- * completes. This is river-window-management-v1 step 3: send new state to
- * every window, then wait for the responses.
- *
- * Windows that did not respond before the timeout keep their pending state and
- * fall back to the per-window path, which is the protocol's "the server will
- * send the dimensions event in a future render sequence".
- */
-struct window_transaction_handler {
-	void (*done)(bool timed_out, void *data);
-};
-
-/* Returns false if a transaction is already open or on allocation failure. */
-bool
-window_transaction_begin(void);
-void
-window_transaction_commit(const struct window_transaction_handler *handler,
-                          void *data, uint32_t timeout_ms);
-bool
-window_transaction_active(void);
+/* The transaction API is public; see swc_transaction_begin() in swc.h. */
 
 /*
  * Record that a window has acknowledged its current configure. Shells with a

@@ -42,6 +42,9 @@ struct window {
 static const char *terminal_command[] = {"st-wl", NULL};
 static const char *dmenu_command[] = {"dmenu_run-wl", NULL};
 static const uint32_t border_width = 1;
+/* How long a relayout waits for windows to respond before giving up on the
+ * stragglers and showing what it has. */
+static const uint32_t arrange_timeout_ms = 100;
 static const uint32_t border_color_active = 0xff333388;
 static const uint32_t border_color_normal = 0xff888888;
 
@@ -49,6 +52,15 @@ static struct screen *active_screen;
 static struct window *focused_window;
 static struct wl_display *display;
 static struct wl_event_loop *event_loop;
+
+static void
+arrange_done(bool timed_out, void *data)
+{
+	unsigned *num_windows = data;
+
+	fprintf(stderr, "arrange: relayout of %u window(s) %s\n", *num_windows,
+	        timed_out ? "timed out" : "complete");
+}
 
 /* This is a basic grid arrange function that tries to give each window an
  * equal space. */
@@ -63,6 +75,10 @@ arrange(struct screen *screen)
 	if (screen->num_windows == 0) {
 		return;
 	}
+
+	/* Relayout every window as one cohort so the grid changes in a single
+	 * frame instead of each window jumping as it happens to respond. */
+	swc_transaction_begin();
 
 	num_columns = ceil(sqrt(screen->num_windows));
 	num_rows = screen->num_windows / num_columns + 1;
@@ -88,6 +104,9 @@ arrange(struct screen *screen)
 			window = wl_container_of(window->link.next, window, link);
 		}
 	}
+
+	swc_transaction_commit(arrange_timeout_ms, &arrange_done,
+	                       &screen->num_windows);
 }
 
 static void

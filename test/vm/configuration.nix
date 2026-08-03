@@ -188,6 +188,10 @@
       touch /mnt/out/mark-two
 
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
+      # The whole point: did the cohort actually run, and did it complete
+      # rather than time out? A screenshot cannot tell these apart.
+      say "relayouts: $(grep -c '^arrange: relayout' /tmp/neoswc.log 2>/dev/null)"
+      say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "foot1 log: $(cat /tmp/foot1.log 2>/dev/null | tr '\n' '|')"
       say "foot2 log: $(cat /tmp/foot2.log 2>/dev/null | tr '\n' '|')"
       say "READY"

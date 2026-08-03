@@ -49,8 +49,8 @@ static const struct swc_window_handler null_handler;
  */
 static struct transaction *window_transaction;
 static struct wl_list transaction_windows;
-static const struct window_transaction_handler *transaction_handler;
-static void *transaction_handler_data;
+static void (*transaction_done_cb)(bool timed_out, void *data);
+static void *transaction_done_data;
 
 static bool
 should_throttle_motion(uint32_t throttle_ms, uint32_t *last_time, uint32_t time)
@@ -249,6 +249,8 @@ static void
 transaction_done(struct transaction *transaction, bool timed_out, void *data)
 {
 	struct window *window, *tmp;
+	void (*done)(bool timed_out, void *data);
+	void *data_ptr;
 
 	(void)data;
 
@@ -287,19 +289,23 @@ transaction_done(struct transaction *transaction, bool timed_out, void *data)
 	window_transaction = NULL;
 	transaction_destroy(transaction);
 
-	if (transaction_handler && transaction_handler->done) {
-		transaction_handler->done(timed_out, transaction_handler_data);
+	/* Clear before dispatching: the callback may begin the next transaction. */
+	done = transaction_done_cb;
+	data_ptr = transaction_done_data;
+	transaction_done_cb = NULL;
+	transaction_done_data = NULL;
+
+	if (done) {
+		done(timed_out, data_ptr);
 	}
-	transaction_handler = NULL;
-	transaction_handler_data = NULL;
 }
 
 static const struct transaction_handler barrier_handler = {
     .complete = transaction_done,
 };
 
-bool
-window_transaction_begin(void)
+EXPORT bool
+swc_transaction_begin(void)
 {
 	if (window_transaction) {
 		return false;
@@ -315,22 +321,22 @@ window_transaction_begin(void)
 	return true;
 }
 
-void
-window_transaction_commit(const struct window_transaction_handler *handler,
-                          void *data, uint32_t timeout_ms)
+EXPORT void
+swc_transaction_commit(uint32_t timeout_ms,
+                       void (*done)(bool timed_out, void *data), void *data)
 {
 	if (!window_transaction) {
 		return;
 	}
 
-	transaction_handler = handler;
-	transaction_handler_data = data;
+	transaction_done_cb = done;
+	transaction_done_data = data;
 	/* May complete, and tear everything down, before this returns. */
 	transaction_commit(window_transaction, timeout_ms);
 }
 
-bool
-window_transaction_active(void)
+EXPORT bool
+swc_transaction_active(void)
 {
 	return window_transaction != NULL;
 }

@@ -363,6 +363,49 @@ swc_window_set_geometry(struct swc_window *window,
                         const struct swc_rectangle *geometry);
 
 /**
+ * Begin a transaction.
+ *
+ * Normally each window's new geometry is applied as soon as that window
+ * responds, so a relayout touching several windows lands in pieces across
+ * several frames and the user sees it tear.
+ *
+ * Inside a transaction, every window reconfigured with swc_window_set_size,
+ * swc_window_set_position or swc_window_set_geometry is instead collected into
+ * a cohort. Nothing is applied, and the windows' own commits are held back from
+ * the screen, until every member has responded. The whole relayout then appears
+ * in a single frame.
+ *
+ * Returns false if a transaction is already open, or on allocation failure.
+ * Transactions do not nest.
+ */
+bool
+swc_transaction_begin(void);
+
+/**
+ * Finish a transaction and wait for the windows to respond.
+ *
+ * The cohort completes when every window has acknowledged, or after
+ * timeout_ms milliseconds, whichever comes first. `done` is then called with
+ * timed_out indicating which happened, and may be NULL.
+ *
+ * A window that did not respond in time keeps its pending state and falls back
+ * to being applied on its own when its next buffer arrives, so a slow or wedged
+ * client delays the relayout but never blocks it.
+ *
+ * If nothing was reconfigured, the transaction completes immediately and `done`
+ * runs before this function returns.
+ */
+void
+swc_transaction_commit(uint32_t timeout_ms,
+                       void (*done)(bool timed_out, void *data), void *data);
+
+/**
+ * Whether a transaction is currently open.
+ */
+bool
+swc_transaction_active(void);
+
+/**
  * Get the window's current geometry in compositor-global coordinates.
  */
 bool
