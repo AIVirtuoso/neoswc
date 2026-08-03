@@ -74,6 +74,10 @@
 
   documentation.enable = false;
 
+  # foot refuses to start without a monospace font, and a minimal guest ships
+  # none. This is the difference between two windows and zero.
+  fonts.packages = [ pkgs.dejavu_fonts ];
+
   # Everything the host needs to know is printed to the console with SMOKE:
   # markers, so a run is judged by reading console.log rather than by poking at
   # an interactive shell.
@@ -96,6 +100,7 @@
       pkgs.util-linux
       pkgs.gnugrep
       pkgs.gawk
+      pkgs.iproute2
     ];
     script = ''
       OUT=/mnt/out/smoke.log
@@ -104,7 +109,11 @@
       # mirrored to the shared directory, which is what the host actually reads.
       say() { echo "SMOKE: $*"; echo "SMOKE: $*" >> "$OUT" 2>/dev/null || true; }
 
-      export XDG_RUNTIME_DIR=/run/user/0
+      # NOT /run/user/0. logind mounts a fresh tmpfs there when root autologs in
+      # on tty1, which shadows whatever was already in the directory: the
+      # compositor binds its socket first, then the socket becomes unreachable
+      # by path while ss still reports it. Use a directory logind never touches.
+      export XDG_RUNTIME_DIR=/run/neoswc
       mkdir -p "$XDG_RUNTIME_DIR"
       chmod 700 "$XDG_RUNTIME_DIR"
 
@@ -126,7 +135,23 @@
         > /tmp/neoswc.log 2>&1 </dev/null &
       sleep 8
 
-      say "processes: $(ps -eo stat,comm | grep -Ei 'swc-launch|neoswc-example' | tr '\n' ';')"
+      say "processes: $(ps -eo pid,ppid,stat,comm | grep -Ei 'swc-launch|neoswc-example' | tr '\n' ';')"
+
+      # The compositor was seen in do_epoll_wait, which is past
+      # wl_display_add_socket_auto() -- yet no socket exists on disk. Ask the
+      # process itself rather than inferring: what environment did it get, and
+      # what is it actually listening on.
+      # -f, not -x: comm is truncated to 15 chars ("neoswc-example-").
+      wmpid=$(pgrep -f neoswc-example-wm | head -1)
+      if [ -n "$wmpid" ]; then
+        say "wm pid=$wmpid env: $(tr '\0' '\n' < /proc/$wmpid/environ 2>/dev/null | grep -E '^(XDG_RUNTIME_DIR|WAYLAND_DISPLAY|HOME|USER)=' | tr '\n' ' ')"
+        say "wm cwd=$(readlink /proc/$wmpid/cwd 2>/dev/null) root=$(readlink /proc/$wmpid/root 2>/dev/null)"
+        say "wm sockets: $(ls -l /proc/$wmpid/fd 2>/dev/null | grep -c socket) fd(s)"
+      else
+        say "wm process not found by name"
+      fi
+      say "listening unix sockets: $(ss -lxH 2>/dev/null | awk '{print $5}' | grep -i wayland | tr '\n' ' ')"
+      say "all wayland-ish paths: $(find / -xdev -maxdepth 5 -name 'wayland-*' 2>/dev/null | tr '\n' ' ')"
 
       sock=""
       for i in $(seq 1 50); do
@@ -151,17 +176,20 @@
 
       # The example wm grid-tiles on every add, so each new client triggers a
       # multi-window relayout -- the exact operation the barrier makes atomic.
-      setsid foot -- sh -c 'while :; do sleep 1; done' >/dev/null 2>&1 &
+      # Keep their output: a client that dies silently is the whole problem.
+      setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot1.log 2>&1 &
       sleep 4
-      say "MARK one-window"
+      say "MARK one-window (foot1: $(ps -eo comm | grep -c '^foot$') alive)"
       touch /mnt/out/mark-one
 
-      setsid foot -- sh -c 'while :; do sleep 1; done' >/dev/null 2>&1 &
+      setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot2.log 2>&1 &
       sleep 4
-      say "MARK two-windows"
+      say "MARK two-windows (foot2: $(ps -eo comm | grep -c '^foot$') alive)"
       touch /mnt/out/mark-two
 
-      say "clients: $(ps -eo comm | grep -c foot) foot process(es)"
+      say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
+      say "foot1 log: $(cat /tmp/foot1.log 2>/dev/null | tr '\n' '|')"
+      say "foot2 log: $(cat /tmp/foot2.log 2>/dev/null | tr '\n' '|')"
       say "READY"
       touch /mnt/out/ready
       sync
