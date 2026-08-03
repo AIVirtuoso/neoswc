@@ -214,9 +214,44 @@ window_entered(void *data)
 	focus(window);
 }
 
+/* This window manager tiles, so the state requests do not apply: a tiled
+ * window is already the size the layout says it should be. They are reported
+ * so it is visible that the requests arrive. */
+static void
+window_maximize(void *data)
+{
+	(void)data;
+	fprintf(stderr, "window: maximize requested\n");
+}
+
+static void
+window_unmaximize(void *data)
+{
+	(void)data;
+	fprintf(stderr, "window: unmaximize requested\n");
+}
+
+static void
+window_minimize(void *data)
+{
+	(void)data;
+	fprintf(stderr, "window: minimize requested\n");
+}
+
+static void
+window_menu(void *data, int32_t x, int32_t y)
+{
+	(void)data;
+	fprintf(stderr, "window: menu requested at %d,%d\n", x, y);
+}
+
 static const struct swc_window_handler window_handler = {
     .destroy = &window_destroy,
     .entered = &window_entered,
+    .maximize = &window_maximize,
+    .unmaximize = &window_unmaximize,
+    .minimize = &window_minimize,
+    .window_menu = &window_menu,
 };
 
 static void

@@ -399,6 +399,12 @@ show_window_menu(struct wl_client *client, struct wl_resource *resource,
                  struct wl_resource *seat, uint32_t serial, int32_t x,
                  int32_t y)
 {
+	struct xdg_toplevel *toplevel = wl_resource_get_user_data(resource);
+
+	(void)client;
+	(void)seat;
+	(void)serial;
+	window_request_window_menu(&toplevel->window, x, y);
 }
 
 static void
@@ -442,11 +448,19 @@ set_min_size(struct wl_client *client, struct wl_resource *resource,
 static void
 set_maximized(struct wl_client *client, struct wl_resource *resource)
 {
+	struct xdg_toplevel *toplevel = wl_resource_get_user_data(resource);
+
+	(void)client;
+	window_request_maximize(&toplevel->window);
 }
 
 static void
 unset_maximized(struct wl_client *client, struct wl_resource *resource)
 {
+	struct xdg_toplevel *toplevel = wl_resource_get_user_data(resource);
+
+	(void)client;
+	window_request_unmaximize(&toplevel->window);
 }
 
 static void
@@ -463,6 +477,10 @@ unset_fullscreen(struct wl_client *client, struct wl_resource *resource)
 static void
 set_minimized(struct wl_client *client, struct wl_resource *resource)
 {
+	struct xdg_toplevel *toplevel = wl_resource_get_user_data(resource);
+
+	(void)client;
+	window_request_minimize(&toplevel->window);
 }
 
 static const struct xdg_toplevel_interface toplevel_impl = {

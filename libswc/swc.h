@@ -263,6 +263,39 @@ struct swc_window_handler {
 	 * the interactive resize will be honored.
 	 */
 	void (*resize)(void *data);
+
+	/**
+	 * Called when the window asks to be maximized.
+	 *
+	 * This is a request, not a notification: nothing has changed when it
+	 * arrives. The window manager decides whether to honor it, typically by
+	 * calling swc_window_set_geometry with the screen's usable geometry.
+	 */
+	void (*maximize)(void *data);
+
+	/**
+	 * Called when the window asks to stop being maximized.
+	 *
+	 * As with maximize, the window manager decides whether to honor it.
+	 */
+	void (*unmaximize)(void *data);
+
+	/**
+	 * Called when the window asks to be minimized.
+	 *
+	 * swc has no concept of minimized, so a window manager wanting to support
+	 * it must implement it, for example with swc_window_hide.
+	 */
+	void (*minimize)(void *data);
+
+	/**
+	 * Called when the window asks for its window menu to be shown, at the
+	 * given position relative to the window.
+	 *
+	 * There is no menu in swc; a window manager that does not draw one should
+	 * leave this NULL.
+	 */
+	void (*window_menu)(void *data, int32_t x, int32_t y);
 };
 
 struct swc_window {

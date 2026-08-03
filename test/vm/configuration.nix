@@ -224,7 +224,17 @@
       touch /mnt/out/mark-four
       wait_host four
 
+      # A client that asks to be maximized on startup, to confirm the
+      # xdg_toplevel state requests reach the window manager. This wm tiles, so
+      # it only reports them.
+      setsid foot --maximized ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot5.log 2>&1 &
+      sleep 4
+      say "MARK maximize-request"
+      say "foot5 log: $(cat /tmp/foot5.log 2>/dev/null | tr '\n' '|')"
+
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
+      say "state requests: $(grep -c '^window: ' /tmp/neoswc.log 2>/dev/null)"
+      say "$(grep '^window: ' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       # The whole point: did the cohort actually run, and did it complete
       # rather than time out? A screenshot cannot tell these apart.
       say "relayouts: $(grep -c '^arrange: relayout' /tmp/neoswc.log 2>/dev/null)"

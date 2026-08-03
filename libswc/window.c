@@ -879,6 +879,43 @@ window_unmanage(struct window *window)
 	window->managed = false;
 }
 
+/*
+ * The four xdg_toplevel state requests. swc implements none of these states
+ * itself, so these only forward the request to the window manager, which
+ * decides whether and how to honor it.
+ */
+void
+window_request_maximize(struct window *window)
+{
+	if (window->handler->maximize) {
+		window->handler->maximize(window->handler_data);
+	}
+}
+
+void
+window_request_unmaximize(struct window *window)
+{
+	if (window->handler->unmaximize) {
+		window->handler->unmaximize(window->handler_data);
+	}
+}
+
+void
+window_request_minimize(struct window *window)
+{
+	if (window->handler->minimize) {
+		window->handler->minimize(window->handler_data);
+	}
+}
+
+void
+window_request_window_menu(struct window *window, int32_t x, int32_t y)
+{
+	if (window->handler->window_menu) {
+		window->handler->window_menu(window->handler_data, x, y);
+	}
+}
+
 void
 window_set_title(struct window *window, const char *title, size_t length)
 {

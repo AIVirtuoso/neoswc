@@ -136,6 +136,14 @@ window_manage(struct window *window);
 void
 window_unmanage(struct window *window);
 void
+window_request_maximize(struct window *window);
+void
+window_request_unmaximize(struct window *window);
+void
+window_request_minimize(struct window *window);
+void
+window_request_window_menu(struct window *window, int32_t x, int32_t y);
+void
 window_set_title(struct window *window, const char *title, size_t length);
 void
 window_set_app_id(struct window *window, const char *app_id);
