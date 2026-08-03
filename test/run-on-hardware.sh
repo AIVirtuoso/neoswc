@@ -20,6 +20,7 @@
 #          first: it needs no protocol client, so a failure is swc's DRM or
 #          input path rather than anything protocol-related.
 #   river  neoswc serving the river protocols, with rill as the manager.
+#          Override the manager with RIVER_WM=/path/to/wm.
 set -u
 
 NEOSWC="${NEOSWC:-/nix/store/jr0xdn9mda055bl2p742fz4xlhnp0i4f-neoswc-0.0}"
@@ -84,8 +85,10 @@ RT=/tmp/XDG_RUNTIME_DIR_0
 
 case "$MODE" in
 river)
-	echo "starting neoswc (river protocols); rill must be started separately" >> "$LOG"
-	"$NEOSWC/bin/swc-launch" -- "$NEOSWC/bin/neoswc" >> "$LOG" 2>&1
+	# rill is a client of neoswc, not a compositor, so it cannot be the
+	# argument to swc-launch. neoswc spawns it once its socket is up.
+	echo "starting neoswc (river protocols) with ${RIVER_WM:-rill}" >> "$LOG"
+	"$NEOSWC/bin/swc-launch" -- "$NEOSWC/bin/neoswc" "${RIVER_WM:-rill}" >> "$LOG" 2>&1
 	;;
 wm)
 	echo "starting the example window manager" >> "$LOG"

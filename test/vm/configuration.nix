@@ -168,14 +168,25 @@ in
       # both places -- LD_LIBRARY_PATH is not an option, since swc-launch is
       # setuid and the loader strips it before the manager is spawned.
       WM=neoswc-example-wm
+      CLIENT=
       if [ -x /tmp/neoswc-vm-share/zig-wm ]; then
         WM=/tmp/neoswc-vm-share/zig-wm
         say "using the Zig window manager"
       elif [ "$(cat /tmp/neoswc-vm-share/mode 2>/dev/null)" = river ]; then
         # neoswc does no window management itself: it serves
         # river-window-management-v1 and a separate client decides the layout.
+        # That client is passed to neoswc, which spawns it once its socket
+        # exists -- it cannot be handed to swc-launch, whose argument is the
+        # compositor. A real window manager can be substituted by writing its
+        # path into the shared directory; the guest shares the host's nix
+        # store, so a host store path resolves here.
         WM=neoswc
-        say "using neoswc with the river protocol"
+        CLIENT=river-wm-client
+        if [ -s /tmp/neoswc-vm-share/wmclient ]; then
+          CLIENT=$(cat /tmp/neoswc-vm-share/wmclient)
+          say "wm client override: $CLIENT"
+        fi
+        say "using neoswc with the river protocol, manager $CLIENT"
       fi
 
       # Cores land in the shared directory so gdb can be run on them after the
@@ -190,9 +201,19 @@ in
       # group. Without a separate session the kernel sends SIGTTOU to this
       # script, which stops it -- it goes quiet without dying, which is exactly
       # what happened before.
-      setsid /run/wrappers/bin/swc-launch -n -t /dev/tty1 -- "$WM" \
+      setsid /run/wrappers/bin/swc-launch -n -t /dev/tty1 -- "$WM" $CLIENT \
         > /tmp/neoswc.log 2>&1 </dev/null &
       sleep 8
+
+      # The manager is a child of the compositor now, so its output lands in
+      # the compositor's log. Keep splitting it back out, because every check
+      # below reads /tmp/wmclient.log and river-wm-client prefixes its lines.
+      if [ -n "$CLIENT" ]; then
+        ( while true; do
+            grep '^wmclient:' /tmp/neoswc.log > /tmp/wmclient.log 2>/dev/null || true
+            sleep 1
+          done ) &
+      fi
 
       say "processes: $(ps -eo pid,ppid,stat,comm | grep -Ei 'swc-launch|neoswc' | tr '\n' ';')"
 
@@ -233,19 +254,12 @@ in
       export WAYLAND_DISPLAY="$(basename "$sock")"
       say "compositor up on $WAYLAND_DISPLAY"
 
-      # In river mode the layout comes from a protocol client, so it has to be
-      # running before any window appears.
-      if [ "$WM" = neoswc ]; then
-        # A real window manager can be substituted by writing its path into the
-        # shared directory; the guest shares the host's nix store, so a host
-        # store path resolves here.
-        CLIENT=river-wm-client
-        if [ -s /tmp/neoswc-vm-share/wmclient ]; then
-          CLIENT=$(cat /tmp/neoswc-vm-share/wmclient)
-          say "wm client override: $CLIENT"
-        fi
-        setsid $CLIENT > /tmp/wmclient.log 2>&1 &
+      # The manager was spawned by the compositor, before this point. Report
+      # what it did rather than starting it: a manager that failed to exec is
+      # the difference between a tiled screen and a blank one.
+      if [ -n "$CLIENT" ]; then
         sleep 3
+        say "manager spawn: $(grep -E '^neoswc: (spawned|failed to exec|manager)' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
         say "wm client: $(head -4 /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
         say "wm client alive: $(pgrep -fc "$CLIENT" 2>/dev/null || true)"
       fi
@@ -390,6 +404,9 @@ in
       say "pointer: $(grep -cE 'POINTER (enter|leave)' /tmp/wmclient.log 2>/dev/null || true) event(s); $(grep -E '^wmclient: POINTER' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
       say "pointer binding: $(grep -cE 'PBINDING' /tmp/wmclient.log 2>/dev/null || true) event(s)"
       say "shell surface: $(grep -E '^wmclient: (SHELL|FAIL shell)' /tmp/wmclient.log 2>/dev/null | tr '\n' ';')"
+      # Whole file, not a say() line: the manager is a child of the compositor
+      # now, so its output is in here, and say() truncates.
+      cp /tmp/neoswc.log /tmp/neoswc-vm-share/neoswc.log 2>/dev/null || true
       say "log: $(cat /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "DONE"
       sync
