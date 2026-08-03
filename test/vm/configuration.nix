@@ -276,6 +276,12 @@ in
       # on real hardware. Run it here, with one window already up, and get out
       # of the way again: it takes keyboard focus, which would otherwise wreck
       # the focus and binding measurements later in this script.
+      # Skippable: fuzzel maps a layer surface and takes keyboard focus, so when
+      # something later in the run misbehaves it is worth being able to take it
+      # out of the picture rather than reasoning about whether it mattered.
+      if [ -e /tmp/neoswc-vm-share/nofuzzel ]; then
+        say "fuzzel: skipped on request"
+      else
       printf 'alpha\nbeta\ngamma\n' | setsid env WAYLAND_DEBUG=1 \
         fuzzel --dmenu --log-level=debug --log-no-syslog \
         > /tmp/fuzzel.log 2>&1 &
@@ -299,6 +305,7 @@ in
           | while read -r l; do say "  $l"; done
       else
         say "fuzzel: no core file"
+      fi
       fi
 
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot2.log 2>&1 &
