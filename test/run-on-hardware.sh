@@ -9,8 +9,11 @@
 #
 #   1. Ctrl+Alt+F3   (any free VT; your session is on tty1)
 #   2. log in
-#   3. sudo /path/to/this/script [wm|river]
+#   3. /path/to/this/script [wm|river]
 #   4. Ctrl+Alt+F1 to get back to your session, whatever happens
+#
+# No sudo when the setuid swc-launch wrapper is installed, which is the point of
+# installing it: the compositor and every client it spawns run as you.
 #
 # Everything is logged to /tmp/neoswc-hw.log, which survives a wedged VT --
 # read it from your normal session afterwards.
@@ -23,14 +26,33 @@
 #          Override the manager with RIVER_WM=/path/to/wm.
 set -u
 
-NEOSWC="${NEOSWC:-/nix/store/jr0xdn9mda055bl2p742fz4xlhnp0i4f-neoswc-0.0}"
 MODE="${1:-wm}"
 LOG=/tmp/neoswc-hw.log
+REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-if [ "$(id -u)" != 0 ]; then
-	echo "run as root: swc-launch opens DRM devices and manages the VT." >&2
-	echo "(installing it setuid would avoid this; see CLAUDE.md)" >&2
-	exit 1
+# Build from the working tree. A pinned store path used to live here, which
+# meant the script silently tested whatever had been built when the path was
+# written -- the one thing a "run it on real hardware" script must never do.
+# Set NEOSWC to skip the build and use a specific store path.
+if [ -z "${NEOSWC:-}" ]; then
+	echo "building $REPO ..." >&2
+	NEOSWC=$(nix build --no-link --print-out-paths "$REPO#neoswc") || exit 1
+fi
+echo "using $NEOSWC" >&2
+
+# swc-launch needs DRM master and the VT. The setuid wrapper is the good path:
+# launch.c spawns the compositor with POSIX_SPAWN_RESETIDS, so only the
+# launcher keeps euid 0 and everything else runs as you. It comes from the
+# installed package rather than the build above, which is fine as long as the
+# launch protocol between swc-launch and libswc has not changed.
+LAUNCH=/run/wrappers/bin/swc-launch
+if [ ! -u "$LAUNCH" ]; then
+	LAUNCH="$NEOSWC/bin/swc-launch"
+	if [ "$(id -u)" != 0 ]; then
+		echo "no setuid swc-launch wrapper, so this needs root." >&2
+		echo "either run it with sudo, or install the wrapper; see CLAUDE.md." >&2
+		exit 1
+	fi
 fi
 
 if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
@@ -58,6 +80,15 @@ export WLD_DRM_DUMB="${WLD_DRM_DUMB-1}"
 	echo "drm driver: $(readlink -f /sys/class/drm/card*/device/driver 2>/dev/null | sed 's|.*/||' | sort -u | tr '\n' ' ')"
 	echo "input: $(ls /dev/input 2>/dev/null | tr '\n' ' ')"
 	echo "vt: ${XDG_VTNR:-unknown}"
+	echo "neoswc: $NEOSWC"
+	echo "launcher: $LAUNCH"
+	# seat.c calls keyboard_create(NULL), so libxkbcommon picks the defaults
+	# from these and falls back to US. From a VT they are usually unset even
+	# when the desktop session sets them, and every keysym-matched binding
+	# misses on a non-US layout.
+	echo "xkb: layout=${XKB_DEFAULT_LAYOUT:-<unset, libxkbcommon default>}" \
+	     "variant=${XKB_DEFAULT_VARIANT:-<unset>}" \
+	     "options=${XKB_DEFAULT_OPTIONS:-<unset>}"
 } >> "$LOG" 2>&1
 
 # Cores here too, for the same reason the VM collects them: a stripped
@@ -66,9 +97,10 @@ ulimit -c unlimited 2>/dev/null || true
 echo '/tmp/neoswc-hw-core.%e.%p' > /proc/sys/kernel/core_pattern 2>/dev/null || true
 
 # Spawn one client once the compositor is up, so there is something on screen
-# without needing a keybinding to work first. swc-launch sets XDG_RUNTIME_DIR
-# to this when it is unset, and the socket lands there.
-RT=/tmp/XDG_RUNTIME_DIR_0
+# without needing a keybinding to work first. swc-launch only invents an
+# XDG_RUNTIME_DIR when there is none -- running as your own user from a VT there
+# usually is one, and the socket lands there instead.
+RT="${XDG_RUNTIME_DIR:-/tmp/XDG_RUNTIME_DIR_$(id -u)}"
 (
 	for _ in $(seq 1 40); do
 		sock=$(ls "$RT"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
@@ -88,11 +120,11 @@ river)
 	# rill is a client of neoswc, not a compositor, so it cannot be the
 	# argument to swc-launch. neoswc spawns it once its socket is up.
 	echo "starting neoswc (river protocols) with ${RIVER_WM:-rill}" >> "$LOG"
-	"$NEOSWC/bin/swc-launch" -- "$NEOSWC/bin/neoswc" "${RIVER_WM:-rill}" >> "$LOG" 2>&1
+	"$LAUNCH" -- "$NEOSWC/bin/neoswc" "${RIVER_WM:-rill}" >> "$LOG" 2>&1
 	;;
 wm)
 	echo "starting the example window manager" >> "$LOG"
-	"$NEOSWC/bin/swc-launch" -- "$NEOSWC/bin/neoswc-example-wm" >> "$LOG" 2>&1
+	"$LAUNCH" -- "$NEOSWC/bin/neoswc-example-wm" >> "$LOG" 2>&1
 	;;
 *)
 	echo "unknown mode: $MODE (want 'wm' or 'river')" >&2
