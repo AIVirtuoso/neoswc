@@ -51,7 +51,7 @@
 
         # Headless QEMU guest that runs neoswc on virtio-gpu. swc has no nested
         # backend, so this is how the compositor gets exercised without taking
-        # over a VT on the host. See test/vm/README.md.
+        # over a VT on the host. See CLAUDE.md.
         vm = self.nixosConfigurations.testvm.config.system.build.vm;
       };
 

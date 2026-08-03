@@ -8,7 +8,7 @@
 # needs no GPU passthrough.
 #
 # The guest drives itself and reports to the serial console; the host reads
-# console.log and pulls frames with QEMU's screendump. See ./README.md.
+# console.log and pulls frames with QEMU's screendump. See CLAUDE.md.
 {
   pkgs,
   lib,
