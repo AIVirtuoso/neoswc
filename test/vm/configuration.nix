@@ -49,6 +49,10 @@
       "-device virtio-gpu-pci"
       # For screendump, and for driving the guest from the host.
       "-monitor unix:/tmp/neoswc-vm-monitor.sock,server,nowait"
+      # QMP as well: the human monitor's mouse_move sends relative deltas,
+      # which the absolute usb-tablet ignores. input-send-event with abs axes
+      # is the only way to actually move the guest cursor.
+      "-qmp unix:/tmp/neoswc-vm-qmp.sock,server,nowait"
     ];
   };
 
@@ -226,7 +230,7 @@
         setsid $CLIENT > /tmp/wmclient.log 2>&1 &
         sleep 3
         say "wm client: $(head -4 /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
-        say "wm client alive: $(pgrep -fc "$CLIENT" 2>/dev/null || echo 0)"
+        say "wm client alive: $(pgrep -fc "$CLIENT" 2>/dev/null || true)"
       fi
 
       # The example wm grid-tiles on every add, so each new client triggers a
@@ -284,7 +288,7 @@
       say "foot5 log: $(cat /tmp/foot5.log 2>/dev/null | tr '\n' '|')"
 
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
-      say "compositor alive: $(pgrep -c -x neoswc || echo 0)"
+      say "compositor alive: $(pgrep -c -x neoswc || true)"
       say "crash: $(dmesg | grep -iE 'segfault|general protection|trap ' | tail -3 | tr '\n' '|')"
       core=$(ls -t /tmp/neoswc-vm-share/core.* 2>/dev/null | head -1)
       if [ -n "$core" ]; then
@@ -303,7 +307,8 @@
         say "wm client sequences: manage=$(grep -c 'manage_start:' /tmp/wmclient.log) render=$(grep -c 'render_start:' /tmp/wmclient.log)"
         # Reported separately: the output events arrive first and were being
         # cut off by the tail below.
-        say "wm client outputs: $(grep -E '^wmclient: (new output|output )' /tmp/wmclient.log | tr '\n' '|')"
+        say "windows seen by manager: $(grep -c 'new window' /tmp/wmclient.log 2>/dev/null || true)"
+      say "wm client outputs: $(grep -E '^wmclient: (new output|output )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client seat: $(grep -E '^wmclient: (new seat|seat )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client bindings: $(grep -E '^wmclient: (registered|BINDING|bound river_xkb)' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client log: $(tr '\n' '|' < /tmp/wmclient.log | tail -c 1200)"
@@ -318,7 +323,7 @@
       sleep 3
       setsid stdbuf -oL -eL wev > /tmp/wev2.log 2>&1 &
       sleep 3
-      say "wev clients: $(pgrep -c -x wev || echo 0)"
+      say "wev clients: $(pgrep -c -x wev || true)"
 
       say "READY"
       touch /tmp/neoswc-vm-share/ready
@@ -331,13 +336,13 @@
       done
 
       # After the hold, so keys injected by the host in the meantime are seen.
-      say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || echo 0) press(es)"
+      say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || true) press(es)"
       say "binding log: $(grep '^wmclient: BINDING' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
       say "wev1 log: $(tail -c 400 /tmp/wev1.log 2>/dev/null | tr '\n' ';')"
-      say "focus enter: wev1=$(grep -c '] enter' /tmp/wev1.log 2>/dev/null || echo 0) wev2=$(grep -c '] enter' /tmp/wev2.log 2>/dev/null || echo 0)"
-      say "focus: wev1 keys=$(grep -c '] key:' /tmp/wev1.log 2>/dev/null || echo 0) wev2 keys=$(grep -c '] key:' /tmp/wev2.log 2>/dev/null || echo 0)"
-      say "pointer: $(grep -cE 'POINTER (enter|leave)' /tmp/wmclient.log 2>/dev/null || echo 0) event(s); $(grep -E '^wmclient: POINTER' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
-      say "pointer binding: $(grep -cE 'PBINDING' /tmp/wmclient.log 2>/dev/null || echo 0) event(s)"
+      say "focus enter: wev1=$(grep -c '] enter' /tmp/wev1.log 2>/dev/null || true) wev2=$(grep -c '] enter' /tmp/wev2.log 2>/dev/null || true)"
+      say "focus: wev1 keys=$(grep -c '] key:' /tmp/wev1.log 2>/dev/null || true) wev2 keys=$(grep -c '] key:' /tmp/wev2.log 2>/dev/null || true)"
+      say "pointer: $(grep -cE 'POINTER (enter|leave)' /tmp/wmclient.log 2>/dev/null || true) event(s); $(grep -E '^wmclient: POINTER' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+      say "pointer binding: $(grep -cE 'PBINDING' /tmp/wmclient.log 2>/dev/null || true) event(s)"
       say "log: $(cat /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "DONE"
       sync
