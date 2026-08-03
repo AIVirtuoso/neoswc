@@ -1,6 +1,12 @@
 /* swc: libswc/window.c
  *
  * Copyright (c) 2013 Michael Forney
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal

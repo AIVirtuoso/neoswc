@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2026 neoswc contributors
+#
 # Unit tests for internal libswc modules. These compile the module sources in
 # directly rather than linking libswc: the library is built with hidden
 # visibility, and these modules are deliberately free of libswc dependencies so

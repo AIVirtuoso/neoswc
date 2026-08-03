@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2026 neoswc contributors
+#
 # Guest configuration for the neoswc test VM.
 #
 # swc has no nested or headless backend: drm.c is the only output path and it

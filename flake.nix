@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2026 neoswc contributors
 {
   description = "neoswc - neuswc fork implementing river-window-management-v1";
 
