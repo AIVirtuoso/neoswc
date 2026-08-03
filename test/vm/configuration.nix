@@ -153,6 +153,16 @@ in
       mkdir -p "$XDG_RUNTIME_DIR"
       chmod 700 "$XDG_RUNTIME_DIR"
 
+      # rill reads $XDG_CONFIG_HOME/rill/config.zon, else $HOME/.config/rill.
+      # Without one it has no keybindings at all, so testing bindings against
+      # rill means giving it the real config from the host.
+      export HOME=/root
+      if [ -s /tmp/neoswc-vm-share/rill-config ]; then
+        mkdir -p /root/.config/rill
+        cp /tmp/neoswc-vm-share/rill-config /root/.config/rill/config.zon
+        say "installed rill config ($(wc -l < /root/.config/rill/config.zon) lines)"
+      fi
+
       say "dri devices: $(ls /dev/dri 2>/dev/null | tr '\n' ' ')"
       if [ ! -e /dev/dri/card0 ]; then
         say "FAIL no DRM device; virtio-gpu did not bind"
@@ -403,6 +413,11 @@ in
       done
 
       # After the hold, so keys injected by the host in the meantime are seen.
+      # Compositor-side view, which is the only view when the manager is rill:
+      # what it asked swc for, and what actually fired.
+      say "bindings registered: $(grep -E '^neoswc: (key|pointer) binding' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
+      say "bindings fired: $(grep -c 'binding 0x.* fired' /tmp/neoswc.log 2>/dev/null || true)"
+      say "binding fire log: $(grep 'fired' /tmp/neoswc.log 2>/dev/null | tail -8 | tr '\n' '|')"
       say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || true) press(es)"
       say "binding log: $(grep '^wmclient: BINDING' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
       say "wev1 log: $(tail -c 400 /tmp/wev1.log 2>/dev/null | tr '\n' ';')"

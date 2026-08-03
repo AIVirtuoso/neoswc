@@ -22,6 +22,7 @@
 #include "river-window-management-v1-server-protocol.h"
 #include "river-xkb-bindings-v1-server-protocol.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <swc.h>
@@ -551,6 +552,10 @@ binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 	(void)time;
 	(void)value;
 
+	fprintf(stderr, "neoswc: binding 0x%x fired (%s)%s\n", binding->keysym,
+	        state ? "pressed" : "released",
+	        binding->resource ? "" : ", but the manager is gone");
+
 	if (!binding->resource) {
 		return;
 	}
@@ -574,13 +579,24 @@ binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 static void
 binding_register(struct river_binding *binding)
 {
+	int ret;
+
 	if (binding->registered) {
 		return;
 	}
-	if (swc_add_binding(binding->type, binding->modifiers, binding->keysym,
-	                    binding_pressed, binding) == 0) {
-		binding->registered = true;
-	}
+	ret = swc_add_binding(binding->type, binding->modifiers, binding->keysym,
+	                      binding_pressed, binding);
+	binding->registered = ret == 0;
+	/*
+	 * A manager whose bindings do nothing is indistinguishable from a
+	 * compositor that is not receiving input, so say what was asked for and
+	 * whether swc took it.
+	 */
+	fprintf(stderr, "neoswc: %s binding %s: %s 0x%x, swc modifiers 0x%x\n",
+	        binding->type == SWC_BINDING_BUTTON ? "pointer" : "key",
+	        binding->registered ? "registered" : "REJECTED",
+	        binding->type == SWC_BINDING_BUTTON ? "button" : "keysym",
+	        binding->keysym, binding->modifiers);
 }
 
 static void
