@@ -38,8 +38,20 @@ if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
 	exit 1
 fi
 
+# wld's intel driver claims every device with vendor id 0x8086 -- there is no
+# device_id check -- so on anything newer than its libdrm_intel path supports
+# it matches, fails to create a renderer, and swc exits with
+# "Could not create WLD DRM renderer". Seen on an Arc A770 (8086:56a0).
+#
+# WLD_DRM_DUMB skips driver probing and uses the dumb-buffer path with pixman
+# software rendering, which is what the VM used all along. Set WLD_DRM_DUMB=
+# (empty) to try the accelerated path instead.
+export WLD_DRM_DUMB="${WLD_DRM_DUMB-1}"
+
 : > "$LOG"
 {
+	echo "WLD_DRM_DUMB=${WLD_DRM_DUMB:-<unset, probing drivers>}"
+	echo "gpu: $(lspci -nn 2>/dev/null | grep -iE 'VGA|Display' | head -1)"
 	echo "=== $(date -Is) mode=$MODE ==="
 	echo "dri: $(ls /dev/dri 2>&1)"
 	echo "drm driver: $(readlink -f /sys/class/drm/card*/device/driver 2>/dev/null | sed 's|.*/||' | sort -u | tr '\n' ' ')"
