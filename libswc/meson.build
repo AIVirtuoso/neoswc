@@ -59,7 +59,7 @@ foreach proto, proto_src : protos
 	# river-window-management-v1 is implemented by the compositor in wm/, not
 	# by libswc, and -fvisibility=hidden would keep the interface symbols out
 	# of reach anyway. wm/ compiles it directly.
-	if proto != 'river-window-management-v1' and proto != 'river-layer-shell-v1'
+	if proto != 'river-window-management-v1' and proto != 'river-layer-shell-v1' and proto != 'river-xkb-bindings-v1'
 		libswc_src += proto_src
 	endif
 endforeach

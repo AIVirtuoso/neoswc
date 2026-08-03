@@ -165,7 +165,7 @@
         > /tmp/neoswc.log 2>&1 </dev/null &
       sleep 8
 
-      say "processes: $(ps -eo pid,ppid,stat,comm | grep -Ei 'swc-launch|neoswc-example' | tr '\n' ';')"
+      say "processes: $(ps -eo pid,ppid,stat,comm | grep -Ei 'swc-launch|neoswc' | tr '\n' ';')"
 
       # The compositor was seen in do_epoll_wait, which is past
       # wl_display_add_socket_auto() -- yet no socket exists on disk. Ask the
@@ -238,9 +238,16 @@
       # then force a relayout by adding another window. The cohort must give up
       # on it and show everyone else rather than blocking -- the barrier's
       # defining behaviour, and until now only covered by unit tests.
-      victim=$(pgrep -x foot | head -1)
-      kill -STOP "$victim"
-      say "STOPPED client $victim"
+      # Guarded: the script runs under set -e, so kill with an empty pid aborts
+      # it before the diagnostics below are ever printed. That happens whenever
+      # the clients failed to start, which is exactly when the log is wanted.
+      victim=$(pgrep -x foot | head -1 || true)
+      if [ -n "$victim" ]; then
+        kill -STOP "$victim" || true
+        say "STOPPED client $victim"
+      else
+        say "no client to wedge; skipping the straggler check"
+      fi
 
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot3.log 2>&1 &
       sleep 4
@@ -249,8 +256,10 @@
       wait_host three
 
       # ...and it must recover once the client comes back, not stay degraded.
-      kill -CONT "$victim"
-      say "RESUMED client $victim"
+      if [ -n "$victim" ]; then
+        kill -CONT "$victim" || true
+        say "RESUMED client $victim"
+      fi
 
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot4.log 2>&1 &
       sleep 4
@@ -267,10 +276,13 @@
       say "foot5 log: $(cat /tmp/foot5.log 2>/dev/null | tr '\n' '|')"
 
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
+      say "compositor alive: $(pgrep -c -x neoswc || echo 0)"
+      say "crash: $(dmesg | grep -iE 'segfault|general protection|trap ' | tail -3 | tr '\n' '|')"
       say "state requests: $(grep -c '^window: ' /tmp/neoswc.log 2>/dev/null)"
       say "$(grep '^window: ' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       # The whole point: did the cohort actually run, and did it complete
       # rather than time out? A screenshot cannot tell these apart.
+      say "compositor log: $(tr '\n' '|' < /tmp/neoswc.log | tail -c 1500)"
       say "relayouts: $(grep -cE "^(arrange|zig-wm): relayout" /tmp/neoswc.log 2>/dev/null)"
       if [ -s /tmp/wmclient.log ]; then
         say "wm client sequences: manage=$(grep -c 'manage_start:' /tmp/wmclient.log) render=$(grep -c 'render_start:' /tmp/wmclient.log)"

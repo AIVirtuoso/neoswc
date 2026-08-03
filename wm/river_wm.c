@@ -20,6 +20,7 @@
 
 #include "river-layer-shell-v1-server-protocol.h"
 #include "river-window-management-v1-server-protocol.h"
+#include "river-xkb-bindings-v1-server-protocol.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -75,10 +76,76 @@ static struct {
 	struct wl_resource *seat;
 	struct wl_resource *layer_seat;
 	struct wl_global *layer_shell_global;
+	struct wl_global *xkb_bindings_global;
 	struct swc_screen *screen;
 } wm;
 
 static void schedule_sequence(void);
+static void maybe_free_window(struct river_window *window);
+
+/* ----------------------------------------------------------------- inert */
+
+/*
+ * Objects handed back for features that are not implemented.
+ *
+ * They need a real vtable of no-ops. Passing NULL to
+ * wl_resource_set_implementation() does not make an object inert -- libwayland
+ * disconnects the client on the first request to it, with
+ * "Implementation of resource N of <interface> is NULL". The point of handing
+ * these back at all is to avoid killing a manager that merely asked, so a NULL
+ * implementation defeats the purpose exactly.
+ */
+
+static void
+inert_destroy(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+inert_none(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+}
+
+static void
+inert_new_id(struct wl_client *client, struct wl_resource *resource,
+             uint32_t id)
+{
+	(void)client;
+	(void)resource;
+	(void)id;
+}
+
+static void
+inert_xy(struct wl_client *client, struct wl_resource *resource, int32_t x,
+         int32_t y)
+{
+	(void)client;
+	(void)resource;
+	(void)x;
+	(void)y;
+}
+
+static const struct river_pointer_binding_v1_interface pointer_binding_impl = {
+    .destroy = inert_destroy,
+    .enable = inert_none,
+    .disable = inert_none,
+};
+
+static const struct river_shell_surface_v1_interface shell_surface_impl = {
+    .destroy = inert_destroy,
+    .get_node = inert_new_id,
+    .sync_next_commit = inert_none,
+};
+
+static const struct river_decoration_v1_interface decoration_impl = {
+    .destroy = inert_destroy,
+    .set_offset = inert_xy,
+    .sync_next_commit = inert_none,
+};
 
 /* ------------------------------------------------------------------ node */
 
@@ -168,9 +235,12 @@ node_resource_destroy(struct wl_resource *resource)
 {
 	struct river_window *window = wl_resource_get_user_data(resource);
 
-	if (window && window->node == resource) {
-		window->node = NULL;
+	if (!window || window->node != resource) {
+		return;
 	}
+
+	window->node = NULL;
+	maybe_free_window(window);
 }
 
 /* ---------------------------------------------------------------- output */
@@ -269,6 +339,271 @@ advertise_output(struct river_output *output)
 	}
 
 	send_output_geometry(output);
+}
+
+/* ---------------------------------------------------------- xkb bindings */
+
+/*
+ * Keyboard bindings on top of swc_add_binding().
+ *
+ * The manager registers a keysym plus modifiers and is told when it is pressed
+ * and released; swc swallows the key so it never reaches the focused client.
+ * That is exactly what swc's binding API already does, so this is mostly
+ * translation.
+ */
+
+struct river_binding {
+	struct wl_resource *resource;
+	uint32_t keysym;
+	uint32_t modifiers; /* swc's encoding, already translated */
+	bool registered;
+};
+
+/*
+ * river uses the X11 mask convention (shift 1, ctrl 4, mod1 8, mod4 64); swc
+ * has its own (ctrl 1, alt 2, logo 4, shift 8). Neither is a subset of the
+ * other, so translate rather than cast.
+ */
+static uint32_t
+modifiers_to_swc(uint32_t modifiers)
+{
+	uint32_t result = 0;
+
+	if (modifiers & RIVER_SEAT_V1_MODIFIERS_SHIFT) {
+		result |= SWC_MOD_SHIFT;
+	}
+	if (modifiers & RIVER_SEAT_V1_MODIFIERS_CTRL) {
+		result |= SWC_MOD_CTRL;
+	}
+	if (modifiers & RIVER_SEAT_V1_MODIFIERS_MOD1) {
+		result |= SWC_MOD_ALT;
+	}
+	if (modifiers & RIVER_SEAT_V1_MODIFIERS_MOD4) {
+		result |= SWC_MOD_LOGO;
+	}
+	/* mod3 and mod5 have no swc equivalent and are dropped. */
+
+	return result;
+}
+
+static void
+binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
+{
+	struct river_binding *binding = data;
+
+	(void)time;
+	(void)value;
+
+	if (!binding->resource) {
+		return;
+	}
+
+	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		river_xkb_binding_v1_send_pressed(binding->resource);
+	} else {
+		river_xkb_binding_v1_send_released(binding->resource);
+	}
+}
+
+static void
+binding_register(struct river_binding *binding)
+{
+	if (binding->registered) {
+		return;
+	}
+	if (swc_add_binding(SWC_BINDING_KEY, binding->modifiers, binding->keysym,
+	                    binding_pressed, binding) == 0) {
+		binding->registered = true;
+	}
+}
+
+static void
+binding_unregister(struct river_binding *binding)
+{
+	if (!binding->registered) {
+		return;
+	}
+	swc_remove_binding(SWC_BINDING_KEY, binding->modifiers, binding->keysym);
+	binding->registered = false;
+}
+
+static void
+binding_destroy_request(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+binding_enable(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	binding_register(wl_resource_get_user_data(resource));
+}
+
+static void
+binding_disable(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	binding_unregister(wl_resource_get_user_data(resource));
+}
+
+static void
+binding_set_layout_override(struct wl_client *client,
+                            struct wl_resource *resource, uint32_t layout)
+{
+	(void)client;
+	(void)resource;
+	(void)layout;
+	/*
+	 * Resolve the keysym in a specific keyboard layout rather than the active
+	 * one, so a binding keeps working when the layout changes. swc's bindings
+	 * match on the keysym the active layout produced, with no way to ask for
+	 * another, so this is accepted and ignored.
+	 */
+}
+
+static const struct river_xkb_binding_v1_interface binding_impl = {
+    .destroy = binding_destroy_request,
+    .set_layout_override = binding_set_layout_override,
+    .enable = binding_enable,
+    .disable = binding_disable,
+};
+
+static void
+binding_resource_destroy(struct wl_resource *resource)
+{
+	struct river_binding *binding = wl_resource_get_user_data(resource);
+
+	if (!binding) {
+		return;
+	}
+	binding_unregister(binding);
+	binding->resource = NULL;
+	free(binding);
+}
+
+static void
+xkb_seat_destroy_request(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+xkb_seat_ignore(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+}
+
+static void
+xkb_seat_modifiers_watch(struct wl_client *client, struct wl_resource *resource,
+                         uint32_t modifiers)
+{
+	(void)client;
+	(void)resource;
+	(void)modifiers;
+	/*
+	 * modifiers_update is never sent: swc reports modifier state to focused
+	 * clients but exposes no hook for the compositor to observe it. A manager
+	 * using this to drive modifier-held modes will not see them.
+	 */
+}
+
+static const struct river_xkb_bindings_seat_v1_interface xkb_seat_impl = {
+    .destroy = xkb_seat_destroy_request,
+    /*
+     * ensure_next_key_eaten asks that the next key press be swallowed rather
+     * than delivered, which swc's binding API cannot express: it swallows keys
+     * that match a registered binding and nothing else. ate_unbound_key is
+     * therefore never sent either.
+     */
+    .ensure_next_key_eaten = xkb_seat_ignore,
+    .cancel_ensure_next_key_eaten = xkb_seat_ignore,
+    .modifiers_watch = xkb_seat_modifiers_watch,
+};
+
+static void
+xkb_bindings_destroy_request(struct wl_client *client,
+                             struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+xkb_bindings_get_xkb_binding(struct wl_client *client,
+                             struct wl_resource *resource,
+                             struct wl_resource *seat, uint32_t id,
+                             uint32_t keysym, uint32_t modifiers)
+{
+	struct river_binding *binding;
+
+	(void)seat; /* single seat */
+
+	binding = calloc(1, sizeof(*binding));
+	if (!binding) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	binding->keysym = keysym;
+	binding->modifiers = modifiers_to_swc(modifiers);
+
+	binding->resource =
+	    wl_resource_create(client, &river_xkb_binding_v1_interface,
+	                       wl_resource_get_version(resource), id);
+	if (!binding->resource) {
+		free(binding);
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(binding->resource, &binding_impl, binding,
+	                               binding_resource_destroy);
+
+	/* The protocol says a binding starts enabled. */
+	binding_register(binding);
+}
+
+static void
+xkb_bindings_get_seat(struct wl_client *client, struct wl_resource *resource,
+                      uint32_t id, struct wl_resource *seat)
+{
+	struct wl_resource *xkb_seat;
+
+	(void)seat;
+
+	xkb_seat = wl_resource_create(client,
+	                              &river_xkb_bindings_seat_v1_interface,
+	                              wl_resource_get_version(resource), id);
+	if (!xkb_seat) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(xkb_seat, &xkb_seat_impl, NULL, NULL);
+}
+
+static const struct river_xkb_bindings_v1_interface xkb_bindings_impl = {
+    .destroy = xkb_bindings_destroy_request,
+    .get_xkb_binding = xkb_bindings_get_xkb_binding,
+    .get_seat = xkb_bindings_get_seat,
+};
+
+static void
+bind_xkb_bindings(struct wl_client *client, void *data, uint32_t version,
+                  uint32_t id)
+{
+	struct wl_resource *resource;
+
+	(void)data;
+
+	resource = wl_resource_create(client, &river_xkb_bindings_v1_interface,
+	                              (int)version, id);
+	if (!resource) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(resource, &xkb_bindings_impl, NULL, NULL);
 }
 
 /* ----------------------------------------------------------- layer shell */
@@ -509,7 +844,8 @@ seat_get_pointer_binding(struct wl_client *client, struct wl_resource *resource,
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(binding, NULL, NULL, NULL);
+	wl_resource_set_implementation(binding, &pointer_binding_impl, NULL,
+	                               NULL);
 }
 
 static void
@@ -615,6 +951,14 @@ window_get_node(struct wl_client *client, struct wl_resource *resource,
 	wl_resource_set_implementation(node, &node_impl, window,
 	                               node_resource_destroy);
 	if (window) {
+		/*
+		 * Only the newest node is tracked. Strand any earlier one by
+		 * clearing its user data, which every node handler already treats as
+		 * inert -- otherwise it keeps a pointer this window may outlive.
+		 */
+		if (window->node) {
+			wl_resource_set_user_data(window->node, NULL);
+		}
 		window->node = node;
 	}
 }
@@ -773,7 +1117,7 @@ window_get_decoration(struct wl_client *client, struct wl_resource *resource,
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(decoration, NULL, NULL, NULL);
+	wl_resource_set_implementation(decoration, &decoration_impl, NULL, NULL);
 }
 
 static void
@@ -856,10 +1200,13 @@ window_resource_destroy(struct wl_resource *resource)
 {
 	struct river_window *window = wl_resource_get_user_data(resource);
 
-	if (window && window->resource == resource) {
-		window->resource = NULL;
-		window->advertised = false;
+	if (!window || window->resource != resource) {
+		return;
 	}
+
+	window->resource = NULL;
+	window->advertised = false;
+	maybe_free_window(window);
 }
 
 /* ------------------------------------------------------------- sequencing */
@@ -1108,7 +1455,8 @@ manager_get_shell_surface(struct wl_client *client,
 	}
 	/* Shell surfaces are not implemented; an inert object beats a
 	 * disconnected client. */
-	wl_resource_set_implementation(shell_surface, NULL, NULL, NULL);
+	wl_resource_set_implementation(shell_surface, &shell_surface_impl, NULL,
+	                               NULL);
 }
 
 static void
@@ -1208,7 +1556,14 @@ river_wm_create(struct wl_display *display)
 	 * by the manager rather than dropped. */
 	wm.layer_shell_global = wl_global_create(
 	    display, &river_layer_shell_v1_interface, 1, NULL, bind_layer_shell);
-	return wm.layer_shell_global != NULL;
+	if (!wm.layer_shell_global) {
+		return false;
+	}
+
+	wm.xkb_bindings_global =
+	    wl_global_create(display, &river_xkb_bindings_v1_interface, 3, NULL,
+	                     bind_xkb_bindings);
+	return wm.xkb_bindings_global != NULL;
 }
 
 static void
@@ -1264,17 +1619,46 @@ river_wm_add_screen(struct swc_screen *screen)
 	schedule_sequence();
 }
 
+/*
+ * A river_window outlives its swc window.
+ *
+ * The protocol has the client destroy the river_window_v1 after it receives
+ * closed, so between those two points the resource is still live and its user
+ * data must stay valid. Freeing on the swc side leaves the resource pointing
+ * at freed memory, and any request on it -- or its eventual destruction --
+ * takes the compositor down. Free only once both sides are gone.
+ */
+static void
+maybe_free_window(struct river_window *window)
+{
+	/*
+	 * The node counts too. It is a separate resource holding this same
+	 * pointer as user data, and it can outlive both the swc window and the
+	 * river_window_v1 -- a manager that keeps a node around and repositions
+	 * it would then reach freed memory, which is a crash inside
+	 * swc_window_set_position rather than anywhere obviously wrong here.
+	 */
+	if (window->swc || window->resource || window->node) {
+		return;
+	}
+	free(window);
+}
+
 static void
 handle_window_destroy(void *data)
 {
 	struct river_window *window = data;
 
 	window->closed = true;
+	window->swc = NULL;
+	wl_list_remove(&window->link);
+	wl_list_init(&window->link);
+
 	if (window->resource) {
 		river_window_v1_send_closed(window->resource);
 	}
-	wl_list_remove(&window->link);
-	free(window);
+
+	maybe_free_window(window);
 	schedule_sequence();
 }
 

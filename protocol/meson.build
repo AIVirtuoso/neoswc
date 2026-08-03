@@ -12,6 +12,7 @@ foreach proto : [
   # Vendored from river (MIT); the implementation of it is ours and GPL.
   'river-window-management-v1.xml',
   'river-layer-shell-v1.xml',
+  'river-xkb-bindings-v1.xml',
   wl.find_protocol('xdg-shell', state: 'stable'),
   wl.find_protocol('linux-dmabuf', state: 'unstable', version: 1),
   wl.find_protocol('xdg-decoration', state: 'unstable', version: 1),
