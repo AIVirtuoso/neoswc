@@ -512,6 +512,33 @@ surface_set_view(struct surface *surface, struct view *view)
  * decorations or video pane update while its main content was held, which is
  * precisely the tearing the hold exists to prevent.
  */
+bool
+surface_committed_size(struct surface *surface, uint32_t *width,
+                       uint32_t *height)
+{
+	struct wld_buffer *buffer;
+
+	if (!surface || !(buffer = surface->state.buffer)) {
+		return false;
+	}
+
+	*width = buffer->width;
+	*height = buffer->height;
+
+	/*
+	 * xdg-shell windows report a geometry inside the buffer, excluding
+	 * shadows and other client-side padding. That, not the buffer, is the
+	 * window's size.
+	 */
+	if (surface->has_window_geometry && surface->window_width > 0 &&
+	    surface->window_height > 0) {
+		*width = (uint32_t)surface->window_width;
+		*height = (uint32_t)surface->window_height;
+	}
+
+	return true;
+}
+
 void
 surface_hold_render(struct surface *surface)
 {

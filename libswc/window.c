@@ -373,6 +373,19 @@ swc_transaction_begin(void)
 	return true;
 }
 
+EXPORT bool
+swc_window_get_committed_size(struct swc_window *base, uint32_t *width,
+                              uint32_t *height)
+{
+	struct window *window = INTERNAL(base);
+
+	if (!window || !window->view || !width || !height) {
+		return false;
+	}
+
+	return surface_committed_size(window->view->surface, width, height);
+}
+
 EXPORT void
 swc_window_set_decoration_mode(struct swc_window *base,
                                enum swc_decoration_mode mode)

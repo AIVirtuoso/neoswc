@@ -129,6 +129,18 @@ surface_commit_pending(struct surface *surface);
  * Frame callbacks accumulate unsent while held, which throttles a client that
  * would otherwise spin producing frames nobody will see.
  */
+/*
+ * The content size this surface has committed, which is not necessarily what
+ * the view is showing: while held, a commit has been accepted but not
+ * propagated. Mirrors how compositor.c's attach() derives the view size, so
+ * the answer is what the view will adopt once the hold is released.
+ *
+ * Returns false if the surface has committed no buffer yet.
+ */
+bool
+surface_committed_size(struct surface *surface, uint32_t *width,
+                       uint32_t *height);
+
 void
 surface_hold_render(struct surface *surface);
 

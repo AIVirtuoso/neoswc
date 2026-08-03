@@ -488,6 +488,23 @@ bool
 swc_transaction_active(void);
 
 /**
+ * Get the size the window has committed, which is not necessarily the size it
+ * is currently displaying.
+ *
+ * swc_window_get_geometry reports what is on screen. Inside a transaction that
+ * is deliberately stale: the window has acknowledged its new size and
+ * committed a buffer, but the content is held back until
+ * swc_transaction_present. This reports the size that commit carries, so a
+ * window manager can act on the dimensions a window actually took without
+ * waiting for them to be displayed.
+ *
+ * Returns false if the window has not committed a buffer yet.
+ */
+bool
+swc_window_get_committed_size(struct swc_window *window, uint32_t *width,
+                              uint32_t *height);
+
+/**
  * Get the window's current geometry in compositor-global coordinates.
  */
 bool

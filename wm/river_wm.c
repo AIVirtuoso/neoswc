@@ -522,18 +522,33 @@ begin_render(bool timed_out, void *data)
 	}
 
 	wl_list_for_each (window, &wm.windows, link) {
+		uint32_t width, height;
+
 		if (!window->resource || window->closed) {
 			continue;
 		}
-		if (!swc_window_get_geometry(window->swc, &geometry)) {
+
+		/*
+		 * The committed size, not the displayed one. At this point the window
+		 * has acknowledged and committed its new size, but the render hold
+		 * keeps that off the screen until render_finish -- so the view is
+		 * still showing the previous size, and reporting it would put the
+		 * manager a whole sequence behind.
+		 */
+		if (!swc_window_get_committed_size(window->swc, &width, &height)) {
+			if (!swc_window_get_geometry(window->swc, &geometry)) {
+				continue;
+			}
+			width = geometry.width;
+			height = geometry.height;
+		}
+
+		if ((int32_t)width == window->sent_width &&
+		    (int32_t)height == window->sent_height) {
 			continue;
 		}
-		if ((int32_t)geometry.width == window->sent_width &&
-		    (int32_t)geometry.height == window->sent_height) {
-			continue;
-		}
-		window->sent_width = (int32_t)geometry.width;
-		window->sent_height = (int32_t)geometry.height;
+		window->sent_width = (int32_t)width;
+		window->sent_height = (int32_t)height;
 		river_window_v1_send_dimensions(window->resource, window->sent_width,
 		                                window->sent_height);
 	}
