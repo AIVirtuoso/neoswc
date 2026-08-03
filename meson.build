@@ -92,6 +92,8 @@ if get_option('example')
   subdir('example')
 endif
 
+subdir('test')
+
 summary({
   'Xwayland support': xwayland.found(),
   'Input backend': input_backend,

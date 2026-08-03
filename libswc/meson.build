@@ -46,6 +46,13 @@ libswc_src = files(
 
   xwayland.found() ? ['xserver.c', 'xwm.c'] : [],  
 )
+# Internal modules with no libswc dependencies, exposed so unit tests can
+# compile them in directly. libswc is built -fvisibility=hidden, so these
+# symbols are not reachable by linking the shared library.
+swc_transaction_src = files('transaction.c')
+swc_transaction_inc = include_directories('.')
+
+libswc_src += swc_transaction_src
 libswc_src += [cursor, launch_protocol]
 
 foreach proto, proto_src : protos
