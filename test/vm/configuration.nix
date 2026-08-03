@@ -207,9 +207,18 @@
       # In river mode the layout comes from a protocol client, so it has to be
       # running before any window appears.
       if [ "$WM" = neoswc ]; then
-        setsid river-wm-client > /tmp/wmclient.log 2>&1 &
-        sleep 2
-        say "wm client: $(head -2 /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+        # A real window manager can be substituted by writing its path into the
+        # shared directory; the guest shares the host's nix store, so a host
+        # store path resolves here.
+        CLIENT=river-wm-client
+        if [ -s /tmp/neoswc-vm-share/wmclient ]; then
+          CLIENT=$(cat /tmp/neoswc-vm-share/wmclient)
+          say "wm client override: $CLIENT"
+        fi
+        setsid $CLIENT > /tmp/wmclient.log 2>&1 &
+        sleep 3
+        say "wm client: $(head -4 /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+        say "wm client alive: $(pgrep -fc "$CLIENT" 2>/dev/null || echo 0)"
       fi
 
       # The example wm grid-tiles on every add, so each new client triggers a
@@ -270,6 +279,7 @@
         say "wm client outputs: $(grep -E '^wmclient: (new output|output )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client seat: $(grep -E '^wmclient: (new seat|seat )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client log: $(tr '\n' '|' < /tmp/wmclient.log | tail -c 1200)"
+        say "wm client tail: $(tail -c 900 /tmp/wmclient.log | tr '\n' '|')"
       fi
       say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "foot1 log: $(cat /tmp/foot1.log 2>/dev/null | tr '\n' '|')"
