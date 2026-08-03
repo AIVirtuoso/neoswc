@@ -29,6 +29,13 @@
         pname = "neoswc";
         src = self;
 
+        # Keep symbols. The VM is a test harness, and without these a
+        # segfault's address can only be resolved to the nearest preceding
+        # symbol, which is actively misleading -- it pointed at a function
+        # that could not possibly have been involved.
+        mesonBuildType = "debugoptimized";
+        dontStrip = true;
+
         # example/meson.build builds wm without install:true, so it never
         # reaches $out/bin. Install it here under a non-generic name rather
         # than patching upstream's file -- "wm" is far too broad for $PATH.

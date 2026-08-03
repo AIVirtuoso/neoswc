@@ -530,9 +530,23 @@ swc_window_set_fullscreen(struct swc_window *base, struct swc_screen *screen)
 	struct window *window = INTERNAL(base);
 
 	struct swc_rectangle geom;
+
+	if (!window) {
+		return;
+	}
 	swc_window_get_geometry(base, &geom);
 
 	if (window->mode != WINDOW_MODE_FULLSCREEN) {
+		/*
+		 * Entering fullscreen needs a screen to fill. A NULL one means "leave
+		 * fullscreen", which a window that is not fullscreen has already
+		 * done, so there is nothing to do -- and dereferencing it here
+		 * crashed the compositor.
+		 */
+		if (!screen) {
+			return;
+		}
+
 		window->prev.geom = geom;
 		window->prev.mode = window->mode;
 		swc_window_set_geometry(base, &screen->usable_geometry);
@@ -553,7 +567,14 @@ EXPORT void
 swc_window_set_position(struct swc_window *base, int32_t x, int32_t y)
 {
 	struct window *window = INTERNAL(base);
-	struct swc_rectangle *geometry = &window->view->base.geometry;
+	struct swc_rectangle *geometry;
+
+	/* swc_window_get_geometry() already guards this; the setters did not, so
+	 * a stale or NULL window was a segfault rather than a no-op. */
+	if (!window || !window->view) {
+		return;
+	}
+	geometry = &window->view->base.geometry;
 
 	if (x == geometry->x && y == geometry->y) {
 		window->move.pending = false;
@@ -585,7 +606,12 @@ EXPORT void
 swc_window_set_size(struct swc_window *base, uint32_t width, uint32_t height)
 {
 	struct window *window = INTERNAL(base);
-	struct swc_rectangle *geom = &window->view->base.geometry;
+	struct swc_rectangle *geom;
+
+	if (!window || !window->view) {
+		return;
+	}
+	geom = &window->view->base.geometry;
 
 	clamp_window_size(window, &width, &height);
 

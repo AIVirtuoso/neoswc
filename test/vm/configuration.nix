@@ -104,6 +104,7 @@
       pkgs.gnugrep
       pkgs.gawk
       pkgs.iproute2
+      pkgs.gdb
     ];
     script = ''
       OUT=/tmp/neoswc-vm-share/smoke.log
@@ -153,6 +154,11 @@
         WM=neoswc
         say "using neoswc with the river protocol"
       fi
+
+      # Cores land in the shared directory so gdb can be run on them after the
+      # fact. The crashing process's cwd is /, so the pattern must be absolute.
+      ulimit -c unlimited || true
+      echo '/tmp/neoswc-vm-share/core.%e.%p' > /proc/sys/kernel/core_pattern 2>/dev/null || true
 
       say "starting compositor"
       # Never wait on it: it has blocked uninterruptibly in past runs, and a
@@ -278,6 +284,13 @@
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
       say "compositor alive: $(pgrep -c -x neoswc || echo 0)"
       say "crash: $(dmesg | grep -iE 'segfault|general protection|trap ' | tail -3 | tr '\n' '|')"
+      core=$(ls -t /tmp/neoswc-vm-share/core.* 2>/dev/null | head -1)
+      if [ -n "$core" ]; then
+        say "backtrace:"
+        gdb -batch -n -ex "bt" "$(command -v neoswc)" "$core" 2>&1 | grep -E "^#" | head -20 | while read -r l; do say "  $l"; done
+      else
+        say "no core file"
+      fi
       say "state requests: $(grep -c '^window: ' /tmp/neoswc.log 2>/dev/null)"
       say "$(grep '^window: ' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       # The whole point: did the cohort actually run, and did it complete
