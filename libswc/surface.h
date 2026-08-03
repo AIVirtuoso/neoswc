@@ -108,6 +108,14 @@ struct surface {
 
 struct surface *
 surface_new(struct wl_client *client, uint32_t version, uint32_t id);
+
+/*
+ * The surface behind a wl_surface resource, or NULL if the resource is not one
+ * of ours. Checked rather than cast, so a client passing the wrong object type
+ * is rejected instead of corrupting memory.
+ */
+struct surface *
+surface_from_resource(struct wl_resource *resource);
 void
 surface_set_view(struct surface *surface, struct view *view);
 bool

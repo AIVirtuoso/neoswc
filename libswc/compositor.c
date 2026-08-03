@@ -1307,6 +1307,97 @@ swc_window_stack(struct swc_window *window, int32_t direction)
 }
 
 /*
+ * Shell surfaces are compositor_views with no window attached, so the public
+ * handle is just that pointer. Everything here is the same machinery windows
+ * use; what differs is that nothing negotiates a size, since there is no shell
+ * protocol in the way.
+ */
+#define SHELL_VIEW(s) ((struct compositor_view *)(s))
+
+EXPORT struct swc_shell_surface *
+swc_shell_surface_create(struct wl_resource *resource)
+{
+	struct surface *surface = surface_from_resource(resource);
+
+	if (!surface || surface->view) {
+		/* Not a wl_surface of ours, or it already has a role. */
+		return NULL;
+	}
+
+	return (struct swc_shell_surface *)compositor_create_view(surface);
+}
+
+EXPORT void
+swc_shell_surface_destroy(struct swc_shell_surface *shell_surface)
+{
+	if (shell_surface) {
+		compositor_view_destroy(SHELL_VIEW(shell_surface));
+	}
+}
+
+EXPORT void
+swc_shell_surface_show(struct swc_shell_surface *shell_surface)
+{
+	if (shell_surface) {
+		compositor_view_show(SHELL_VIEW(shell_surface));
+	}
+}
+
+EXPORT void
+swc_shell_surface_hide(struct swc_shell_surface *shell_surface)
+{
+	if (shell_surface) {
+		compositor_view_hide(SHELL_VIEW(shell_surface));
+	}
+}
+
+EXPORT void
+swc_shell_surface_set_position(struct swc_shell_surface *shell_surface,
+                               int32_t x, int32_t y)
+{
+	if (shell_surface) {
+		view_move(&SHELL_VIEW(shell_surface)->base, x, y);
+	}
+}
+
+EXPORT void
+swc_shell_surface_set_stack_layer(struct swc_shell_surface *shell_surface,
+                                  enum swc_stack_layer layer)
+{
+	if (shell_surface) {
+		compositor_view_set_stack_layer(SHELL_VIEW(shell_surface), layer, true);
+	}
+}
+
+EXPORT void
+swc_shell_surface_raise(struct swc_shell_surface *shell_surface)
+{
+	struct compositor_view *view;
+
+	if (!shell_surface) {
+		return;
+	}
+	view = SHELL_VIEW(shell_surface);
+	restack_view_for_layer(view, true);
+	damage_view(view);
+	schedule_updates(view->base.screens);
+}
+
+EXPORT void
+swc_shell_surface_lower(struct swc_shell_surface *shell_surface)
+{
+	struct compositor_view *view;
+
+	if (!shell_surface) {
+		return;
+	}
+	view = SHELL_VIEW(shell_surface);
+	restack_view_for_layer(view, false);
+	damage_view(view);
+	schedule_updates(view->base.screens);
+}
+
+/*
  * enum swc_stack_layer mirrors enum compositor_stack_layer. The public
  * functions pass values straight through, so a divergence would silently
  * restack windows into the wrong layer rather than fail to build.

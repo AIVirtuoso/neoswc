@@ -129,11 +129,169 @@ inert_xy(struct wl_client *client, struct wl_resource *resource, int32_t x,
 	(void)y;
 }
 
-static const struct river_shell_surface_v1_interface shell_surface_impl = {
-    .destroy = inert_destroy,
-    .get_node = inert_new_id,
-    .sync_next_commit = inert_none,
+/* ---------------------------------------------------------- shell surface */
+
+/*
+ * The window manager's own surfaces -- bars, overlays, menus it draws itself.
+ * Unlike a window there is no shell protocol negotiating a size: the manager
+ * positions it and the client just draws.
+ */
+struct river_shell_surface {
+	struct wl_resource *resource;
+	struct wl_resource *node;
+	struct swc_shell_surface *swc;
 };
+
+static void
+shell_node_destroy(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+shell_node_set_position(struct wl_client *client, struct wl_resource *resource,
+                        int32_t x, int32_t y)
+{
+	struct river_shell_surface *shell = wl_resource_get_user_data(resource);
+
+	(void)client;
+	if (shell && shell->swc) {
+		swc_shell_surface_set_position(shell->swc, x, y);
+	}
+}
+
+static void
+shell_node_place_top(struct wl_client *client, struct wl_resource *resource)
+{
+	struct river_shell_surface *shell = wl_resource_get_user_data(resource);
+
+	(void)client;
+	if (shell && shell->swc) {
+		swc_shell_surface_raise(shell->swc);
+	}
+}
+
+static void
+shell_node_place_bottom(struct wl_client *client, struct wl_resource *resource)
+{
+	struct river_shell_surface *shell = wl_resource_get_user_data(resource);
+
+	(void)client;
+	if (shell && shell->swc) {
+		swc_shell_surface_lower(shell->swc);
+	}
+}
+
+/*
+ * Relative placement would need to order a shell surface against a window,
+ * which are different objects on the swc side with no shared restack call.
+ * Raise or lower within the layer instead, which is what a bar or overlay
+ * actually needs.
+ */
+static void
+shell_node_place_above(struct wl_client *client, struct wl_resource *resource,
+                       struct wl_resource *sibling)
+{
+	(void)sibling;
+	shell_node_place_top(client, resource);
+}
+
+static void
+shell_node_place_below(struct wl_client *client, struct wl_resource *resource,
+                       struct wl_resource *sibling)
+{
+	(void)sibling;
+	shell_node_place_bottom(client, resource);
+}
+
+static const struct river_node_v1_interface shell_node_impl = {
+    .destroy = shell_node_destroy,
+    .set_position = shell_node_set_position,
+    .place_top = shell_node_place_top,
+    .place_bottom = shell_node_place_bottom,
+    .place_above = shell_node_place_above,
+    .place_below = shell_node_place_below,
+};
+
+static void
+shell_node_resource_destroy(struct wl_resource *resource)
+{
+	struct river_shell_surface *shell = wl_resource_get_user_data(resource);
+
+	if (shell && shell->node == resource) {
+		shell->node = NULL;
+	}
+}
+
+static void
+shell_surface_destroy_request(struct wl_client *client,
+                              struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+shell_surface_get_node(struct wl_client *client, struct wl_resource *resource,
+                       uint32_t id)
+{
+	struct river_shell_surface *shell = wl_resource_get_user_data(resource);
+	struct wl_resource *node;
+
+	if (shell && shell->node) {
+		wl_resource_post_error(
+		    resource, RIVER_SHELL_SURFACE_V1_ERROR_NODE_EXISTS,
+		    "shell surface already has a node");
+		return;
+	}
+
+	node = wl_resource_create(client, &river_node_v1_interface,
+	                          wl_resource_get_version(resource), id);
+	if (!node) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(node, &shell_node_impl, shell,
+	                               shell_node_resource_destroy);
+	if (shell) {
+		shell->node = node;
+	}
+}
+
+static void
+shell_surface_sync_next_commit(struct wl_client *client,
+                               struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+	/*
+	 * Holds the surface's next commit until the manager's render_finish, the
+	 * same guarantee the render hold gives windows. Not wired up: the hold is
+	 * driven from the window cohort, and a shell surface is not part of one.
+	 */
+}
+
+static const struct river_shell_surface_v1_interface shell_surface_impl = {
+    .destroy = shell_surface_destroy_request,
+    .get_node = shell_surface_get_node,
+    .sync_next_commit = shell_surface_sync_next_commit,
+};
+
+static void
+shell_surface_resource_destroy(struct wl_resource *resource)
+{
+	struct river_shell_surface *shell = wl_resource_get_user_data(resource);
+
+	if (!shell) {
+		return;
+	}
+	swc_shell_surface_destroy(shell->swc);
+	if (shell->node) {
+		wl_resource_set_user_data(shell->node, NULL);
+	}
+	free(shell);
+}
 
 static const struct river_decoration_v1_interface decoration_impl = {
     .destroy = inert_destroy,
@@ -1463,20 +1621,39 @@ manager_get_shell_surface(struct wl_client *client,
                           struct wl_resource *resource, uint32_t id,
                           struct wl_resource *surface)
 {
-	struct wl_resource *shell_surface;
+	struct river_shell_surface *shell;
 
-	(void)surface;
-	shell_surface =
-	    wl_resource_create(client, &river_shell_surface_v1_interface,
-	                       wl_resource_get_version(resource), id);
-	if (!shell_surface) {
+	shell = calloc(1, sizeof(*shell));
+	if (!shell) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	/* Shell surfaces are not implemented; an inert object beats a
-	 * disconnected client. */
-	wl_resource_set_implementation(shell_surface, &shell_surface_impl, NULL,
-	                               NULL);
+
+	/* NULL if the wl_surface already has a role, which the protocol treats as
+	 * an error rather than something to tolerate. */
+	shell->swc = swc_shell_surface_create(surface);
+	if (!shell->swc) {
+		free(shell);
+		wl_resource_post_error(resource, RIVER_WINDOW_MANAGER_V1_ERROR_ROLE,
+		                       "wl_surface already has a role");
+		return;
+	}
+
+	shell->resource =
+	    wl_resource_create(client, &river_shell_surface_v1_interface,
+	                       wl_resource_get_version(resource), id);
+	if (!shell->resource) {
+		swc_shell_surface_destroy(shell->swc);
+		free(shell);
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(shell->resource, &shell_surface_impl, shell,
+	                               shell_surface_resource_destroy);
+
+	/* A manager's own interface belongs above ordinary windows. */
+	swc_shell_surface_set_stack_layer(shell->swc, SWC_STACK_LAYER_TOP);
+	swc_shell_surface_show(shell->swc);
 }
 
 static void

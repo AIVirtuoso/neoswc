@@ -343,6 +343,7 @@
       say "focus: wev1 keys=$(grep -c '] key:' /tmp/wev1.log 2>/dev/null || true) wev2 keys=$(grep -c '] key:' /tmp/wev2.log 2>/dev/null || true)"
       say "pointer: $(grep -cE 'POINTER (enter|leave)' /tmp/wmclient.log 2>/dev/null || true) event(s); $(grep -E '^wmclient: POINTER' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
       say "pointer binding: $(grep -cE 'PBINDING' /tmp/wmclient.log 2>/dev/null || true) event(s)"
+      say "shell surface: $(grep -E '^wmclient: (SHELL|FAIL shell)' /tmp/wmclient.log 2>/dev/null | tr '\n' ';')"
       say "log: $(cat /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "DONE"
       sync

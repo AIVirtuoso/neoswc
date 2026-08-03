@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wayland-client.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define MAX_WINDOWS 16
 
@@ -32,6 +34,8 @@ struct window {
 static struct river_window_manager_v1 *manager;
 static struct river_seat_v1 *the_seat;
 static struct river_xkb_bindings_v1 *xkb_bindings;
+static struct wl_compositor *compositor;
+static struct wl_shm *shm;
 static struct window windows[MAX_WINDOWS];
 static unsigned num_windows;
 static bool running = true;
@@ -573,6 +577,60 @@ static const struct river_window_manager_v1_listener manager_listener = {
     .seat = manager_seat,
 };
 
+/* --------------------------------------------------------- shell surface */
+
+/*
+ * A window manager's own surface: the compositor positions it, nothing
+ * negotiates a size. Filled with a solid colour so it is unmistakable in a
+ * screendump.
+ */
+static void
+create_shell_surface(void)
+{
+	struct wl_surface *surface;
+	struct river_shell_surface_v1 *shell;
+	struct river_node_v1 *node;
+	struct wl_shm_pool *pool;
+	struct wl_buffer *buffer;
+	uint32_t *pixels;
+	int fd;
+	size_t i, size;
+	const int32_t w = 300, h = 120;
+
+	if (!compositor || !shm || !manager) {
+		return;
+	}
+
+	surface = wl_compositor_create_surface(compositor);
+	shell = river_window_manager_v1_get_shell_surface(manager, surface);
+	node = river_shell_surface_v1_get_node(shell);
+	river_node_v1_set_position(node, 60, 60);
+
+	size = (size_t)w * (size_t)h * 4;
+	fd = memfd_create("wmclient-shell", MFD_CLOEXEC);
+	if (fd < 0 || ftruncate(fd, (off_t)size) < 0) {
+		say("FAIL shell surface buffer");
+		return;
+	}
+	pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (pixels == MAP_FAILED) {
+		say("FAIL shell surface mmap");
+		return;
+	}
+	for (i = 0; i < size / 4; ++i) {
+		pixels[i] = 0xffcc2222; /* opaque red */
+	}
+
+	pool = wl_shm_create_pool(shm, fd, (int32_t)size);
+	buffer = wl_shm_pool_create_buffer(pool, 0, w, h, w * 4,
+	                                   WL_SHM_FORMAT_ARGB8888);
+	wl_surface_attach(surface, buffer, 0, 0);
+	wl_surface_damage(surface, 0, 0, w, h);
+	wl_surface_commit(surface);
+
+	say("SHELL created %dx%d at 60,60", w, h);
+}
+
 /* -------------------------------------------------------------- registry */
 
 static void
@@ -580,6 +638,17 @@ registry_global(void *data, struct wl_registry *registry, uint32_t name,
                 const char *interface, uint32_t version)
 {
 	(void)data;
+
+	if (strcmp(interface, wl_compositor_interface.name) == 0) {
+		compositor = wl_registry_bind(registry, name, &wl_compositor_interface,
+		                             version < 4 ? version : 4);
+		return;
+	}
+
+	if (strcmp(interface, wl_shm_interface.name) == 0) {
+		shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+		return;
+	}
 
 	if (strcmp(interface, river_xkb_bindings_v1_interface.name) == 0) {
 		xkb_bindings = wl_registry_bind(registry, name,
@@ -636,6 +705,9 @@ main(int argc, char *argv[])
 		say("FAIL river_window_manager_v1 not advertised");
 		return EXIT_FAILURE;
 	}
+
+	wl_display_roundtrip(display);
+	create_shell_surface();
 
 	while (running && wl_display_dispatch(display) != -1) {
 	}

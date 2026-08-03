@@ -512,6 +512,18 @@ surface_set_view(struct surface *surface, struct view *view)
  * decorations or video pane update while its main content was held, which is
  * precisely the tearing the hold exists to prevent.
  */
+struct surface *
+surface_from_resource(struct wl_resource *resource)
+{
+	if (!resource ||
+	    !wl_resource_instance_of(resource, &wl_surface_interface,
+	                             &surface_impl)) {
+		return NULL;
+	}
+
+	return wl_resource_get_user_data(resource);
+}
+
 bool
 surface_committed_size(struct surface *surface, uint32_t *width,
                        uint32_t *height)

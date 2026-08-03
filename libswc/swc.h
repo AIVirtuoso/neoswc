@@ -42,6 +42,7 @@ struct libinput_device;
 struct wl_client;
 struct wl_display;
 struct wl_event_loop;
+struct wl_resource;
 struct wld_buffer;
 
 /**
@@ -238,6 +239,77 @@ swc_screen_get_wl_output_name(struct swc_screen *screen,
  */
 bool
 swc_get_wl_seat_name(struct wl_client *client, uint32_t *name);
+
+/* }}} */
+
+/**
+ * Stacking layers, ordered from back to front.
+ *
+ * Anything is always stacked within its layer: nothing in SWC_STACK_LAYER_TOP
+ * can be drawn below something in SWC_STACK_LAYER_NORMAL, whatever the
+ * per-item ordering says. New windows start in SWC_STACK_LAYER_NORMAL.
+ */
+enum swc_stack_layer {
+	SWC_STACK_LAYER_BACKGROUND = 0,
+	SWC_STACK_LAYER_BOTTOM = 1,
+	SWC_STACK_LAYER_NORMAL = 2,
+	SWC_STACK_LAYER_TOP = 3,
+	SWC_STACK_LAYER_OVERLAY = 4,
+};
+
+/* Shell surfaces {{{ */
+
+/**
+ * A surface the compositor displays and positions directly, with no shell
+ * protocol involved.
+ *
+ * Windows come from xdg-shell and negotiate their size; a shell surface does
+ * not. It is for a compositor's own interface -- bars, overlays, menus drawn
+ * by a window manager rather than by an application. The compositor decides
+ * where it goes and the client just draws.
+ */
+struct swc_shell_surface;
+
+/**
+ * Start displaying a wl_surface as a shell surface.
+ *
+ * The surface must be a wl_surface that has not already been given a role.
+ * Returns NULL if it is not, or on allocation failure.
+ *
+ * The result is not shown until swc_shell_surface_show.
+ */
+struct swc_shell_surface *
+swc_shell_surface_create(struct wl_resource *surface);
+
+/**
+ * Stop displaying the surface. The wl_surface itself is untouched.
+ */
+void
+swc_shell_surface_destroy(struct swc_shell_surface *shell_surface);
+
+void
+swc_shell_surface_show(struct swc_shell_surface *shell_surface);
+void
+swc_shell_surface_hide(struct swc_shell_surface *shell_surface);
+
+/**
+ * Position the surface in compositor-global coordinates.
+ */
+void
+swc_shell_surface_set_position(struct swc_shell_surface *shell_surface,
+                               int32_t x, int32_t y);
+
+/**
+ * Stacking, matching the window equivalents. A compositor's own interface
+ * usually belongs in SWC_STACK_LAYER_OVERLAY or _TOP.
+ */
+void
+swc_shell_surface_set_stack_layer(struct swc_shell_surface *shell_surface,
+                                  enum swc_stack_layer layer);
+void
+swc_shell_surface_raise(struct swc_shell_surface *shell_surface);
+void
+swc_shell_surface_lower(struct swc_shell_surface *shell_surface);
 
 /* }}} */
 
@@ -735,14 +807,6 @@ swc_window_stack(struct swc_window *window, int32_t direction);
  * can be drawn below something in SWC_STACK_LAYER_NORMAL, whatever the
  * per-window ordering says. New windows start in SWC_STACK_LAYER_NORMAL.
  */
-enum swc_stack_layer {
-	SWC_STACK_LAYER_BACKGROUND = 0,
-	SWC_STACK_LAYER_BOTTOM = 1,
-	SWC_STACK_LAYER_NORMAL = 2,
-	SWC_STACK_LAYER_TOP = 3,
-	SWC_STACK_LAYER_OVERLAY = 4,
-};
-
 /**
  * Move the window to a stacking layer, placing it at the front of that layer.
  *
