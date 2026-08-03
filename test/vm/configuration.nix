@@ -105,6 +105,7 @@
       pkgs.gawk
       pkgs.iproute2
       pkgs.gdb
+      pkgs.wev
     ];
     script = ''
       OUT=/tmp/neoswc-vm-share/smoke.log
@@ -311,6 +312,14 @@
       say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "foot1 log: $(cat /tmp/foot1.log 2>/dev/null | tr '\n' '|')"
       say "foot2 log: $(cat /tmp/foot2.log 2>/dev/null | tr '\n' '|')"
+      # Two event-reporting clients. The manager focuses the newest window, so
+      # wev2 should receive keys and wev1 should not -- that is the focus test.
+      setsid stdbuf -oL -eL wev > /tmp/wev1.log 2>&1 &
+      sleep 3
+      setsid stdbuf -oL -eL wev > /tmp/wev2.log 2>&1 &
+      sleep 3
+      say "wev clients: $(pgrep -c -x wev || echo 0)"
+
       say "READY"
       touch /tmp/neoswc-vm-share/ready
       sync
@@ -324,6 +333,11 @@
       # After the hold, so keys injected by the host in the meantime are seen.
       say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || echo 0) press(es)"
       say "binding log: $(grep '^wmclient: BINDING' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+      say "wev1 log: $(tail -c 400 /tmp/wev1.log 2>/dev/null | tr '\n' ';')"
+      say "focus enter: wev1=$(grep -c '] enter' /tmp/wev1.log 2>/dev/null || echo 0) wev2=$(grep -c '] enter' /tmp/wev2.log 2>/dev/null || echo 0)"
+      say "focus: wev1 keys=$(grep -c '] key:' /tmp/wev1.log 2>/dev/null || echo 0) wev2 keys=$(grep -c '] key:' /tmp/wev2.log 2>/dev/null || echo 0)"
+      say "pointer: $(grep -cE 'POINTER (enter|leave)' /tmp/wmclient.log 2>/dev/null || echo 0) event(s); $(grep -E '^wmclient: POINTER' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+      say "pointer binding: $(grep -cE 'PBINDING' /tmp/wmclient.log 2>/dev/null || echo 0) event(s)"
       say "log: $(cat /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "DONE"
       sync

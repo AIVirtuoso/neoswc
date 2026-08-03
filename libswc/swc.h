@@ -288,6 +288,15 @@ struct swc_window_handler {
 	void (*entered)(void *data);
 
 	/**
+	 * Called when the pointer leaves the window.
+	 *
+	 * The counterpart of entered. A window manager tracking which window the
+	 * pointer is over needs both; with only entered it can tell where the
+	 * pointer went but never that it left everything.
+	 */
+	void (*left)(void *data);
+
+	/**
 	 * Called when the window wants to initiate an interactive move, but the
 	 * window is not in stacked mode.
 	 *

@@ -126,6 +126,16 @@ handle_window_enter(struct wl_listener *listener, void *data)
 		return;
 	}
 
+	/*
+	 * Leave before enter. The event carries both sides of the transition, so
+	 * a handler that tracks the pointer's window sees them in the order they
+	 * happened rather than having to infer the leave from the next enter.
+	 */
+	if (event_data->old && (window = event_data->old->window) &&
+	    window->handler->left) {
+		window->handler->left(window->handler_data);
+	}
+
 	if (!event_data->new || !(window = event_data->new->window)) {
 		return;
 	}

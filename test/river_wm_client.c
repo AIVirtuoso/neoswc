@@ -414,6 +414,15 @@ seat_pointer_enter(void *data, struct river_seat_v1 *proxy,
 	(void)data;
 	(void)proxy;
 	(void)window;
+	say("POINTER enter");
+}
+
+static void
+seat_pointer_leave(void *data, struct river_seat_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+	say("POINTER leave");
 }
 
 static void
@@ -454,7 +463,7 @@ static const struct river_seat_v1_listener seat_listener = {
     .removed = seat_removed,
     .wl_seat = seat_wl_seat,
     .pointer_enter = seat_pointer_enter,
-    .pointer_leave = seat_none,
+    .pointer_leave = seat_pointer_leave,
     .window_interaction = seat_window,
     .shell_surface_interaction = seat_shell_surface,
     .op_delta = seat_xy,
@@ -487,6 +496,27 @@ binding_stop_repeat(void *data, struct river_xkb_binding_v1 *proxy)
 	(void)proxy;
 }
 
+static void
+pointer_binding_pressed(void *data, struct river_pointer_binding_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+	say("PBINDING pressed");
+}
+
+static void
+pointer_binding_released(void *data, struct river_pointer_binding_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+	say("PBINDING released");
+}
+
+static const struct river_pointer_binding_v1_listener pointer_binding_listener = {
+    .pressed = pointer_binding_pressed,
+    .released = pointer_binding_released,
+};
+
 static const struct river_xkb_binding_v1_listener binding_listener = {
     .pressed = binding_pressed,
     .released = binding_released,
@@ -508,6 +538,15 @@ register_test_binding(void)
 	                                               0xffbe, 0);
 	river_xkb_binding_v1_add_listener(binding, &binding_listener, NULL);
 	say("registered F1 binding");
+
+	/* BTN_LEFT, no modifiers. */
+	if (the_seat) {
+		struct river_pointer_binding_v1 *pb =
+		    river_seat_v1_get_pointer_binding(the_seat, 0x110, 0);
+		river_pointer_binding_v1_add_listener(pb, &pointer_binding_listener,
+		                                      NULL);
+		say("registered BTN_LEFT binding");
+	}
 }
 
 static void

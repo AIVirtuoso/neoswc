@@ -129,12 +129,6 @@ inert_xy(struct wl_client *client, struct wl_resource *resource, int32_t x,
 	(void)y;
 }
 
-static const struct river_pointer_binding_v1_interface pointer_binding_impl = {
-    .destroy = inert_destroy,
-    .enable = inert_none,
-    .disable = inert_none,
-};
-
 static const struct river_shell_surface_v1_interface shell_surface_impl = {
     .destroy = inert_destroy,
     .get_node = inert_new_id,
@@ -352,9 +346,14 @@ advertise_output(struct river_output *output)
  * translation.
  */
 
+/*
+ * Shared by key and pointer bindings: swc treats them the same, with a keysym
+ * or a button code in the same slot, so only the events sent differ.
+ */
 struct river_binding {
 	struct wl_resource *resource;
-	uint32_t keysym;
+	enum swc_binding_type type;
+	uint32_t keysym; /* or button code, for SWC_BINDING_BUTTON */
 	uint32_t modifiers; /* swc's encoding, already translated */
 	bool registered;
 };
@@ -398,6 +397,15 @@ binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 		return;
 	}
 
+	if (binding->type == SWC_BINDING_BUTTON) {
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			river_pointer_binding_v1_send_pressed(binding->resource);
+		} else {
+			river_pointer_binding_v1_send_released(binding->resource);
+		}
+		return;
+	}
+
 	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		river_xkb_binding_v1_send_pressed(binding->resource);
 	} else {
@@ -411,7 +419,7 @@ binding_register(struct river_binding *binding)
 	if (binding->registered) {
 		return;
 	}
-	if (swc_add_binding(SWC_BINDING_KEY, binding->modifiers, binding->keysym,
+	if (swc_add_binding(binding->type, binding->modifiers, binding->keysym,
 	                    binding_pressed, binding) == 0) {
 		binding->registered = true;
 	}
@@ -423,7 +431,7 @@ binding_unregister(struct river_binding *binding)
 	if (!binding->registered) {
 		return;
 	}
-	swc_remove_binding(SWC_BINDING_KEY, binding->modifiers, binding->keysym);
+	swc_remove_binding(binding->type, binding->modifiers, binding->keysym);
 	binding->registered = false;
 }
 
@@ -462,6 +470,12 @@ binding_set_layout_override(struct wl_client *client,
 	 * another, so this is accepted and ignored.
 	 */
 }
+
+static const struct river_pointer_binding_v1_interface pointer_binding_impl = {
+    .destroy = binding_destroy_request,
+    .enable = binding_enable,
+    .disable = binding_disable,
+};
 
 static const struct river_xkb_binding_v1_interface binding_impl = {
     .destroy = binding_destroy_request,
@@ -547,6 +561,7 @@ xkb_bindings_get_xkb_binding(struct wl_client *client,
 		wl_client_post_no_memory(client);
 		return;
 	}
+	binding->type = SWC_BINDING_KEY;
 	binding->keysym = keysym;
 	binding->modifiers = modifiers_to_swc(modifiers);
 
@@ -827,25 +842,30 @@ static void
 seat_get_pointer_binding(struct wl_client *client, struct wl_resource *resource,
                          uint32_t id, uint32_t button, uint32_t modifiers)
 {
-	struct wl_resource *binding;
+	struct river_binding *binding;
 
-	(void)button;
-	(void)modifiers;
-
-	/*
-	 * Inert. swc_add_binding could back this, but the protocol's bindings
-	 * carry press/release events the manager acts on, and wiring that needs
-	 * the seat's event stream. Handing back a live object beats disconnecting
-	 * a manager that merely asked.
-	 */
-	binding = wl_resource_create(client, &river_pointer_binding_v1_interface,
-	                             wl_resource_get_version(resource), id);
+	binding = calloc(1, sizeof(*binding));
 	if (!binding) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(binding, &pointer_binding_impl, NULL,
-	                               NULL);
+	/* Same shape as a key binding, with a button code instead of a keysym. */
+	binding->type = SWC_BINDING_BUTTON;
+	binding->keysym = button;
+	binding->modifiers = modifiers_to_swc(modifiers);
+
+	binding->resource =
+	    wl_resource_create(client, &river_pointer_binding_v1_interface,
+	                       wl_resource_get_version(resource), id);
+	if (!binding->resource) {
+		free(binding);
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(binding->resource, &pointer_binding_impl,
+	                               binding, binding_resource_destroy);
+
+	binding_register(binding);
 }
 
 static void
@@ -1700,11 +1720,23 @@ handle_window_entered(void *data)
 	}
 }
 
+static void
+handle_window_left(void *data)
+{
+	struct river_window *window = data;
+
+	(void)window;
+	if (wm.seat) {
+		river_seat_v1_send_pointer_leave(wm.seat);
+	}
+}
+
 static const struct swc_window_handler window_handler = {
     .destroy = handle_window_destroy,
     .title_changed = handle_window_title,
     .app_id_changed = handle_window_app_id,
     .entered = handle_window_entered,
+    .left = handle_window_left,
 };
 
 void
