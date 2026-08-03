@@ -64,6 +64,7 @@ libswc_lib = library(
 libswc = declare_dependency(
 	link_with: libswc_lib,
 	dependencies: requires + requires_private,
+	include_directories: include_directories('.'),
 )
 
 pkg.generate(
