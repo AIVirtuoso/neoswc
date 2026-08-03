@@ -11,6 +11,7 @@
  */
 
 #include "river-window-management-v1-client-protocol.h"
+#include "river-xkb-bindings-v1-client-protocol.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -30,6 +31,7 @@ struct window {
 
 static struct river_window_manager_v1 *manager;
 static struct river_seat_v1 *the_seat;
+static struct river_xkb_bindings_v1 *xkb_bindings;
 static struct window windows[MAX_WINDOWS];
 static unsigned num_windows;
 static bool running = true;
@@ -460,6 +462,54 @@ static const struct river_seat_v1_listener seat_listener = {
     .pointer_position = seat_xy,
 };
 
+/* ----------------------------------------------------------- key binding */
+
+static void
+binding_pressed(void *data, struct river_xkb_binding_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+	say("BINDING pressed");
+}
+
+static void
+binding_released(void *data, struct river_xkb_binding_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+	say("BINDING released");
+}
+
+static void
+binding_stop_repeat(void *data, struct river_xkb_binding_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+}
+
+static const struct river_xkb_binding_v1_listener binding_listener = {
+    .pressed = binding_pressed,
+    .released = binding_released,
+    .stop_repeat = binding_stop_repeat,
+};
+
+/* Registered once a seat exists, and exercised with QEMU's `sendkey f1`. */
+static void
+register_test_binding(void)
+{
+	struct river_xkb_binding_v1 *binding;
+
+	if (!xkb_bindings || !the_seat) {
+		return;
+	}
+
+	/* XKB_KEY_F1, no modifiers. */
+	binding = river_xkb_bindings_v1_get_xkb_binding(xkb_bindings, the_seat,
+	                                               0xffbe, 0);
+	river_xkb_binding_v1_add_listener(binding, &binding_listener, NULL);
+	say("registered F1 binding");
+}
+
 static void
 manager_seat(void *data, struct river_window_manager_v1 *proxy,
              struct river_seat_v1 *seat)
@@ -469,6 +519,7 @@ manager_seat(void *data, struct river_window_manager_v1 *proxy,
 	the_seat = seat;
 	river_seat_v1_add_listener(seat, &seat_listener, NULL);
 	say("new seat");
+	register_test_binding();
 }
 
 static const struct river_window_manager_v1_listener manager_listener = {
@@ -490,6 +541,15 @@ registry_global(void *data, struct wl_registry *registry, uint32_t name,
                 const char *interface, uint32_t version)
 {
 	(void)data;
+
+	if (strcmp(interface, river_xkb_bindings_v1_interface.name) == 0) {
+		xkb_bindings = wl_registry_bind(registry, name,
+		                                &river_xkb_bindings_v1_interface,
+		                                version < 3 ? version : 3);
+		say("bound river_xkb_bindings_v1 v%u", version);
+		register_test_binding();
+		return;
+	}
 
 	if (strcmp(interface, river_window_manager_v1_interface.name) != 0) {
 		return;

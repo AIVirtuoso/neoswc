@@ -137,6 +137,7 @@
         exit 1
       fi
       say "kms: $(modetest -M virtio_gpu -c 2>/dev/null | grep -c '^[0-9]') connector line(s)"
+      say "input devices: $(ls /dev/input 2>/dev/null | tr '\n' ' ')"
 
       # The Zig window manager cannot be built inside the nix sandbox (its
       # translate-c dependency needs network), so it is built on the host and
@@ -303,6 +304,7 @@
         # cut off by the tail below.
         say "wm client outputs: $(grep -E '^wmclient: (new output|output )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client seat: $(grep -E '^wmclient: (new seat|seat )' /tmp/wmclient.log | tr '\n' '|')"
+        say "wm client bindings: $(grep -E '^wmclient: (registered|BINDING|bound river_xkb)' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client log: $(tr '\n' '|' < /tmp/wmclient.log | tail -c 1200)"
         say "wm client tail: $(tail -c 900 /tmp/wmclient.log | tr '\n' '|')"
       fi
@@ -319,6 +321,9 @@
         sleep 1
       done
 
+      # After the hold, so keys injected by the host in the meantime are seen.
+      say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || echo 0) press(es)"
+      say "binding log: $(grep '^wmclient: BINDING' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
       say "log: $(cat /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "DONE"
       sync

@@ -16,7 +16,7 @@ test('transaction', transaction_test)
 # A river-window-management-v1 client, used to drive the compositor's protocol
 # implementation in the test VM. Not a unit test; it needs a running server.
 river_wm_client = executable('river-wm-client',
-  ['river_wm_client.c'] + protos['river-window-management-v1'],
+  ['river_wm_client.c'] + protos['river-window-management-v1'] + protos['river-xkb-bindings-v1'],
   dependencies: [dependency('wayland-client')],
   install: true,
 )
