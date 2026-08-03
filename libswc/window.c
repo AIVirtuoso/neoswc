@@ -55,6 +55,9 @@ static const struct swc_window_handler null_handler;
  */
 static struct transaction *window_transaction;
 static struct wl_list transaction_windows;
+/* Completed cohort waiting on swc_transaction_present(). */
+static struct wl_list presentable_windows;
+static bool presentable_initialized;
 static void (*transaction_done_cb)(bool timed_out, void *data);
 static void *transaction_done_data;
 
@@ -205,6 +208,12 @@ leave_transaction(struct window *window)
 	struct transaction *transaction = window->transaction;
 
 	if (!transaction) {
+		/*
+		 * Might still be parked awaiting present. wl_list_remove on an
+		 * initialised-but-unlinked node is harmless, so this covers both.
+		 */
+		wl_list_remove(&window->transaction_link);
+		wl_list_init(&window->transaction_link);
 		return;
 	}
 
@@ -260,36 +269,22 @@ transaction_done(struct transaction *transaction, bool timed_out, void *data)
 
 	(void)data;
 
+	/*
+	 * Park the cohort rather than applying it. The protocol's loop puts a
+	 * whole round trip between "the windows have responded" and "show it":
+	 * the server reports the resulting dimensions, the manager makes its
+	 * rendering-state requests, and only its render_finish presents. Applying
+	 * here would leave nowhere to put that.
+	 *
+	 * Each window's ack state has to be carried across, because the
+	 * transaction object does not survive this function.
+	 */
 	wl_list_for_each_safe (window, tmp, &transaction_windows,
 	                       transaction_link) {
-		bool acked = transaction_acked(transaction, window);
-
-		wl_list_remove(&window->transaction_link);
-		wl_list_init(&window->transaction_link);
+		window->transaction_acked = transaction_acked(transaction, window);
 		window->transaction = NULL;
-
-		if (!acked) {
-			/*
-			 * A straggler. Leave move.pending and configure.pending set so
-			 * the per-window path picks it up when its buffer finally
-			 * arrives -- the protocol expects its dimensions in a later
-			 * render sequence, not never. Release the hold regardless, or
-			 * an unresponsive window would stay frozen forever.
-			 */
-			surface_release_render(window->view->surface);
-			continue;
-		}
-
-		flush(window);
-		window->configure.pending = false;
-		/*
-		 * Move first, then promote the buffer. Both only queue damage; the
-		 * repaint is an idle callback, so everything dispatched before we
-		 * return to the event loop composites into a single frame. That is
-		 * what makes the relayout atomic on screen rather than merely
-		 * synchronised in bookkeeping.
-		 */
-		surface_release_render(window->view->surface);
+		wl_list_remove(&window->transaction_link);
+		wl_list_insert(&presentable_windows, &window->transaction_link);
 	}
 
 	window_transaction = NULL;
@@ -306,6 +301,43 @@ transaction_done(struct transaction *transaction, bool timed_out, void *data)
 	}
 }
 
+/*
+ * Apply everything a completed cohort has been holding.
+ *
+ * Safe to call with nothing parked, so a caller that is not sure whether a
+ * cohort completed can just call it.
+ */
+static void
+present_cohort(void)
+{
+	struct window *window, *tmp;
+
+	wl_list_for_each_safe (window, tmp, &presentable_windows,
+	                       transaction_link) {
+		wl_list_remove(&window->transaction_link);
+		wl_list_init(&window->transaction_link);
+
+		if (window->transaction_acked) {
+			flush(window);
+			window->configure.pending = false;
+		}
+		/*
+		 * A straggler keeps move.pending and configure.pending, so the
+		 * per-window path picks it up when its buffer finally arrives -- the
+		 * protocol expects its dimensions in a later render sequence, not
+		 * never. Its hold is released either way, or an unresponsive window
+		 * would stay frozen forever.
+		 *
+		 * Move first, then promote the buffer. Both only queue damage and the
+		 * repaint is an idle callback, so everything dispatched before we
+		 * return to the event loop composites into a single frame. That is
+		 * what makes the relayout atomic on screen rather than merely
+		 * synchronised in bookkeeping.
+		 */
+		surface_release_render(window->view->surface);
+	}
+}
+
 static const struct transaction_handler barrier_handler = {
     .complete = transaction_done,
 };
@@ -313,9 +345,22 @@ static const struct transaction_handler barrier_handler = {
 EXPORT bool
 swc_transaction_begin(void)
 {
+	if (!presentable_initialized) {
+		wl_list_init(&presentable_windows);
+		presentable_initialized = true;
+	}
+
 	if (window_transaction) {
 		return false;
 	}
+
+	/*
+	 * Present anything the previous cohort left parked. A caller that never
+	 * calls present() would otherwise leave those windows held forever, and
+	 * silently freezing windows is a far worse failure than presenting a
+	 * frame early.
+	 */
+	present_cohort();
 
 	window_transaction =
 	    transaction_create(swc.event_loop, &barrier_handler, NULL);
@@ -325,6 +370,16 @@ swc_transaction_begin(void)
 
 	wl_list_init(&transaction_windows);
 	return true;
+}
+
+EXPORT void
+swc_transaction_present(void)
+{
+	if (!presentable_initialized) {
+		return;
+	}
+
+	present_cohort();
 }
 
 EXPORT void

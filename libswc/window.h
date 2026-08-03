@@ -96,9 +96,12 @@ struct window {
 		uint32_t serial;
 	} configure;
 
-	/* Non-NULL while enrolled in an open cohort; see window_transaction_begin. */
+	/* Non-NULL while enrolled in an open cohort; see swc_transaction_begin. */
 	struct transaction *transaction;
+	/* Link into the open cohort, then into the one awaiting present. */
 	struct wl_list transaction_link;
+	/* Whether this window responded, carried past the transaction's lifetime. */
+	bool transaction_acked;
 };
 
 struct window_impl {

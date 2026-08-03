@@ -112,6 +112,16 @@
       # mirrored to the shared directory, which is what the host actually reads.
       say() { echo "SMOKE: $*"; echo "SMOKE: $*" >> "$OUT" 2>/dev/null || true; }
 
+      # Block until the host has captured this state, so screendumps land on the
+      # state they name instead of whatever the guest raced ahead to. Proceeds
+      # anyway after 30s so an unattended run still finishes.
+      wait_host() {
+        for _ in $(seq 1 60); do
+          [ -e "/mnt/out/go-$1" ] && return 0
+          sleep 0.5
+        done
+      }
+
       # NOT /run/user/0. logind mounts a fresh tmpfs there when root autologs in
       # on tty1, which shadows whatever was already in the directory: the
       # compositor binds its socket first, then the socket becomes unreachable
@@ -189,6 +199,30 @@
       sleep 4
       say "MARK two-windows (foot2: $(ps -eo comm | grep -c '^foot$') alive)"
       touch /mnt/out/mark-two
+
+      # Straggler path. Wedge a client with SIGSTOP so it cannot acknowledge,
+      # then force a relayout by adding another window. The cohort must give up
+      # on it and show everyone else rather than blocking -- the barrier's
+      # defining behaviour, and until now only covered by unit tests.
+      victim=$(pgrep -x foot | head -1)
+      kill -STOP "$victim"
+      say "STOPPED client $victim"
+
+      setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot3.log 2>&1 &
+      sleep 4
+      say "MARK three-windows-one-wedged"
+      touch /mnt/out/mark-three
+      wait_host three
+
+      # ...and it must recover once the client comes back, not stay degraded.
+      kill -CONT "$victim"
+      say "RESUMED client $victim"
+
+      setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot4.log 2>&1 &
+      sleep 4
+      say "MARK four-windows-recovered"
+      touch /mnt/out/mark-four
+      wait_host four
 
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
       # The whole point: did the cohort actually run, and did it complete

@@ -66,6 +66,11 @@ arrange_done(bool timed_out, void *data)
 
 	fprintf(stderr, "arrange: relayout of %u window(s) %s\n", *num_windows,
 	        timed_out ? "timed out" : "complete");
+
+	/* Nothing to inspect or adjust here, so show it straight away. A window
+	 * manager wanting to restack or adjust borders first would do that before
+	 * this call, and it would all still appear in one frame. */
+	swc_transaction_present();
 }
 
 /* This is a basic grid arrange function that tries to give each window an

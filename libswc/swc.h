@@ -394,6 +394,10 @@ swc_transaction_begin(void);
  * timeout_ms milliseconds, whichever comes first. `done` is then called with
  * timed_out indicating which happened, and may be NULL.
  *
+ * Completing does not display anything. The cohort is held until
+ * swc_transaction_present is called, which leaves room to inspect the
+ * resulting geometry and make further changes before any of it is shown.
+ *
  * A window that did not respond in time keeps its pending state and falls back
  * to being applied on its own when its next buffer arrives, so a slow or wedged
  * client delays the relayout but never blocks it.
@@ -404,6 +408,20 @@ swc_transaction_begin(void);
 void
 swc_transaction_commit(uint32_t timeout_ms,
                        void (*done)(bool timed_out, void *data), void *data);
+
+/**
+ * Display the results of a completed transaction.
+ *
+ * Applies the new geometry and releases the windows' held content, so the whole
+ * relayout reaches the screen in one frame. Call this once the transaction's
+ * completion callback has run; calling it earlier, or with no transaction
+ * outstanding, does nothing.
+ *
+ * swc_transaction_begin presents any outstanding cohort first, so forgetting to
+ * call this delays a relayout but never leaves windows frozen.
+ */
+void
+swc_transaction_present(void);
 
 /**
  * Whether a transaction is currently open.
