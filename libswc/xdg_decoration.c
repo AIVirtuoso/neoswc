@@ -23,6 +23,7 @@
 
 #include "xdg_decoration.h"
 #include "util.h"
+#include "window.h"
 
 #include "xdg-decoration-unstable-v1-server-protocol.h"
 #include <wayland-server.h>
@@ -30,16 +31,57 @@
 struct xdg_toplevel_decoration {
 	struct wl_resource *resource;
 	struct wl_listener toplevel_destroy_listener;
+	struct window *window;
 };
+
+/*
+ * Ask the window manager what to do, and fall back to what swc did
+ * unconditionally before there was anywhere to ask: server-side.
+ */
+static void
+request_mode(struct xdg_toplevel_decoration *decoration,
+             enum swc_decoration_mode mode)
+{
+	struct window *window = decoration->window;
+
+	if (window && window->handler->decoration_mode) {
+		window->handler->decoration_mode(window->handler_data, mode);
+		return;
+	}
+
+	zxdg_toplevel_decoration_v1_send_configure(
+	    decoration->resource, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
 
 static void
 set_mode(struct wl_client *client, struct wl_resource *resource, uint32_t mode)
 {
+	struct xdg_toplevel_decoration *decoration =
+	    wl_resource_get_user_data(resource);
+
+	(void)client;
+	request_mode(decoration, (enum swc_decoration_mode)mode);
 }
 
 static void
 unset_mode(struct wl_client *client, struct wl_resource *resource)
 {
+	struct xdg_toplevel_decoration *decoration =
+	    wl_resource_get_user_data(resource);
+
+	(void)client;
+	request_mode(decoration, SWC_DECORATION_MODE_NONE);
+}
+
+void
+xdg_decoration_send_mode(struct window *window, uint32_t mode)
+{
+	if (!window || !window->decoration ||
+	    mode == SWC_DECORATION_MODE_NONE) {
+		return;
+	}
+
+	zxdg_toplevel_decoration_v1_send_configure(window->decoration, mode);
 }
 
 static const struct zxdg_toplevel_decoration_v1_interface decoration_impl = {
@@ -64,6 +106,10 @@ decoration_destroy(struct wl_resource *resource)
 	    wl_resource_get_user_data(resource);
 
 	wl_list_remove(&decoration->toplevel_destroy_listener.link);
+	if (decoration->window && decoration->window->decoration ==
+	                              decoration->resource) {
+		decoration->window->decoration = NULL;
+	}
 	free(decoration);
 }
 
@@ -83,13 +129,27 @@ get_toplevel_decoration(struct wl_client *client, struct wl_resource *resource,
 	if (!decoration->resource) {
 		goto error1;
 	}
+	/*
+	 * struct xdg_toplevel leads with its struct window, and the toplevel
+	 * resource carries the xdg_toplevel as user data -- the same aliasing
+	 * ack_configure() in xdg_shell.c relies on.
+	 */
+	decoration->window = wl_resource_get_user_data(toplevel_resource);
+	if (decoration->window) {
+		decoration->window->decoration = decoration->resource;
+	}
+
 	decoration->toplevel_destroy_listener.notify = &handle_toplevel_destroy;
 	wl_resource_add_destroy_listener(toplevel_resource,
 	                                 &decoration->toplevel_destroy_listener);
 	wl_resource_set_implementation(decoration->resource, &decoration_impl,
 	                               decoration, decoration_destroy);
-	zxdg_toplevel_decoration_v1_send_configure(
-	    decoration->resource, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+
+	/*
+	 * The protocol requires a configure before the client can use the object,
+	 * and it has stated no preference yet, so ask with NONE.
+	 */
+	request_mode(decoration, SWC_DECORATION_MODE_NONE);
 	return;
 
 error1:

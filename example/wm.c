@@ -245,9 +245,22 @@ window_menu(void *data, int32_t x, int32_t y)
 	fprintf(stderr, "window: menu requested at %d,%d\n", x, y);
 }
 
+static void
+window_decoration_mode(void *data, enum swc_decoration_mode mode)
+{
+	struct window *window = data;
+
+	fprintf(stderr, "window: decoration preference %d\n", (int)mode);
+	/* This window manager draws its own borders, so it always answers
+	 * server-side regardless of what the client asked for. */
+	swc_window_set_decoration_mode(window->swc,
+	                               SWC_DECORATION_MODE_SERVER_SIDE);
+}
+
 static const struct swc_window_handler window_handler = {
     .destroy = &window_destroy,
     .entered = &window_entered,
+    .decoration_mode = &window_decoration_mode,
     .maximize = &window_maximize,
     .unmaximize = &window_unmaximize,
     .minimize = &window_minimize,

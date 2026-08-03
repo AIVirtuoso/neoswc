@@ -96,6 +96,12 @@ struct window {
 		uint32_t serial;
 	} configure;
 
+	/*
+	 * The client's zxdg_toplevel_decoration_v1, if it created one. Owned by
+	 * xdg_decoration.c, which clears it on destroy.
+	 */
+	struct wl_resource *decoration;
+
 	/* Non-NULL while enrolled in an open cohort; see swc_transaction_begin. */
 	struct transaction *transaction;
 	/* Link into the open cohort, then into the one awaiting present. */

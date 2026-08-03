@@ -37,6 +37,7 @@
 #include "swc.h"
 #include "util.h"
 #include "view.h"
+#include "xdg_decoration.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -370,6 +371,13 @@ swc_transaction_begin(void)
 
 	wl_list_init(&transaction_windows);
 	return true;
+}
+
+EXPORT void
+swc_window_set_decoration_mode(struct swc_window *base,
+                               enum swc_decoration_mode mode)
+{
+	xdg_decoration_send_mode(INTERNAL(base), mode);
 }
 
 EXPORT void
@@ -824,6 +832,7 @@ window_initialize(struct window *window, const struct window_impl *impl,
 	window->configure.width = 0;
 	window->configure.height = 0;
 	window->configure.serial = 0;
+	window->decoration = NULL;
 	window->transaction = NULL;
 	wl_list_init(&window->transaction_link);
 	window->resize.interaction.active = false;

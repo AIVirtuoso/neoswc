@@ -215,6 +215,19 @@ swc_screen_set_handler(struct swc_screen *screen,
 
 /* Windows {{{ */
 
+/**
+ * Who draws a window's decorations.
+ *
+ * Values match xdg-decoration-unstable-v1, except for
+ * SWC_DECORATION_MODE_NONE, which that protocol expresses as the absence of a
+ * preference rather than as a mode.
+ */
+enum swc_decoration_mode {
+	SWC_DECORATION_MODE_NONE = 0,
+	SWC_DECORATION_MODE_CLIENT_SIDE = 1,
+	SWC_DECORATION_MODE_SERVER_SIDE = 2,
+};
+
 struct swc_window_handler {
 	/**
 	 * Called when the window is about to be destroyed.
@@ -296,6 +309,18 @@ struct swc_window_handler {
 	 * leave this NULL.
 	 */
 	void (*window_menu)(void *data, int32_t x, int32_t y);
+
+	/**
+	 * Called when the window states a preference for who draws its
+	 * decorations, or withdraws one with SWC_DECORATION_MODE_NONE.
+	 *
+	 * This is a preference, not a decision. Reply with
+	 * swc_window_set_decoration_mode; the window uses whatever it is told,
+	 * regardless of what it asked for. If this is left NULL, the window is
+	 * told SWC_DECORATION_MODE_SERVER_SIDE, which is what swc did
+	 * unconditionally before this callback existed.
+	 */
+	void (*decoration_mode)(void *data, enum swc_decoration_mode mode);
 };
 
 struct swc_window {
@@ -697,6 +722,17 @@ swc_window_lower(struct swc_window *window);
 void
 swc_window_restack(struct swc_window *window, struct swc_window *sibling,
                    bool above);
+
+/**
+ * Tell the window who draws its decorations.
+ *
+ * Has no effect if the window never asked, which is the case for clients that
+ * do not bind xdg-decoration. SWC_DECORATION_MODE_NONE is not a valid answer
+ * and is ignored.
+ */
+void
+swc_window_set_decoration_mode(struct swc_window *window,
+                               enum swc_decoration_mode mode);
 
 /* }}} */
 

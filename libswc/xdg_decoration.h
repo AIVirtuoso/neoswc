@@ -24,9 +24,20 @@
 #ifndef SWC_XDG_DECORATION_H
 #define SWC_XDG_DECORATION_H
 
+#include <stdint.h>
+
 struct wl_display;
+struct window;
 
 struct wl_global *
 xdg_decoration_manager_create(struct wl_display *display);
+
+/*
+ * Tell the window which decoration mode to use. No-op if the client never
+ * created a decoration object. Kept here rather than in window.c so the
+ * xdg-decoration protocol header stays out of the window layer.
+ */
+void
+xdg_decoration_send_mode(struct window *window, uint32_t mode);
 
 #endif
