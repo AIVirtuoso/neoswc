@@ -37,7 +37,7 @@
     # Create it on the host before booting: mkdir -p /tmp/neoswc-vm-share
     sharedDirectories.out = {
       source = "/tmp/neoswc-vm-share";
-      target = "/mnt/out";
+      target = "/tmp/neoswc-vm-share";
     };
 
     qemu.options = [
@@ -106,7 +106,7 @@
       pkgs.iproute2
     ];
     script = ''
-      OUT=/mnt/out/smoke.log
+      OUT=/tmp/neoswc-vm-share/smoke.log
       : > "$OUT" 2>/dev/null || true
       # Console output stops once the VT goes graphical, so everything is
       # mirrored to the shared directory, which is what the host actually reads.
@@ -117,7 +117,7 @@
       # anyway after 30s so an unattended run still finishes.
       wait_host() {
         for _ in $(seq 1 60); do
-          [ -e "/mnt/out/go-$1" ] && return 0
+          [ -e "/tmp/neoswc-vm-share/go-$1" ] && return 0
           sleep 0.5
         done
       }
@@ -137,6 +137,18 @@
       fi
       say "kms: $(modetest -M virtio_gpu -c 2>/dev/null | grep -c '^[0-9]') connector line(s)"
 
+      # The Zig window manager cannot be built inside the nix sandbox (its
+      # translate-c dependency needs network), so it is built on the host and
+      # dropped into the shared directory. The share is mounted at the same
+      # path it has on the host precisely so the binary's rpath resolves in
+      # both places -- LD_LIBRARY_PATH is not an option, since swc-launch is
+      # setuid and the loader strips it before the manager is spawned.
+      WM=neoswc-example-wm
+      if [ -x /tmp/neoswc-vm-share/zig-wm ]; then
+        WM=/tmp/neoswc-vm-share/zig-wm
+        say "using the Zig window manager"
+      fi
+
       say "starting compositor"
       # Never wait on it: it has blocked uninterruptibly in past runs, and a
       # blocked child must not take the diagnostics down with it.
@@ -144,7 +156,7 @@
       # group. Without a separate session the kernel sends SIGTTOU to this
       # script, which stops it -- it goes quiet without dying, which is exactly
       # what happened before.
-      setsid /run/wrappers/bin/swc-launch -n -t /dev/tty1 -- neoswc-example-wm \
+      setsid /run/wrappers/bin/swc-launch -n -t /dev/tty1 -- "$WM" \
         > /tmp/neoswc.log 2>&1 </dev/null &
       sleep 8
 
@@ -178,7 +190,7 @@
         say "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR contents: $(ls -a "$XDG_RUNTIME_DIR" 2>&1 | tr '\n' ' ')"
         say "sockets anywhere: $(find /run /tmp -maxdepth 3 -name 'wayland-*' 2>/dev/null | tr '\n' ' ')"
         say "log: $(cat /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
-        touch /mnt/out/failed
+        touch /tmp/neoswc-vm-share/failed
         sync
         systemctl poweroff -f || poweroff -f
         exit 1
@@ -193,12 +205,12 @@
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot1.log 2>&1 &
       sleep 4
       say "MARK one-window (foot1: $(ps -eo comm | grep -c '^foot$') alive)"
-      touch /mnt/out/mark-one
+      touch /tmp/neoswc-vm-share/mark-one
 
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot2.log 2>&1 &
       sleep 4
       say "MARK two-windows (foot2: $(ps -eo comm | grep -c '^foot$') alive)"
-      touch /mnt/out/mark-two
+      touch /tmp/neoswc-vm-share/mark-two
 
       # Straggler path. Wedge a client with SIGSTOP so it cannot acknowledge,
       # then force a relayout by adding another window. The cohort must give up
@@ -211,7 +223,7 @@
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot3.log 2>&1 &
       sleep 4
       say "MARK three-windows-one-wedged"
-      touch /mnt/out/mark-three
+      touch /tmp/neoswc-vm-share/mark-three
       wait_host three
 
       # ...and it must recover once the client comes back, not stay degraded.
@@ -221,7 +233,7 @@
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot4.log 2>&1 &
       sleep 4
       say "MARK four-windows-recovered"
-      touch /mnt/out/mark-four
+      touch /tmp/neoswc-vm-share/mark-four
       wait_host four
 
       # A client that asks to be maximized on startup, to confirm the
@@ -237,17 +249,17 @@
       say "$(grep '^window: ' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       # The whole point: did the cohort actually run, and did it complete
       # rather than time out? A screenshot cannot tell these apart.
-      say "relayouts: $(grep -c '^arrange: relayout' /tmp/neoswc.log 2>/dev/null)"
+      say "relayouts: $(grep -cE "^(arrange|zig-wm): relayout" /tmp/neoswc.log 2>/dev/null)"
       say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "foot1 log: $(cat /tmp/foot1.log 2>/dev/null | tr '\n' '|')"
       say "foot2 log: $(cat /tmp/foot2.log 2>/dev/null | tr '\n' '|')"
       say "READY"
-      touch /mnt/out/ready
+      touch /tmp/neoswc-vm-share/ready
       sync
 
       # Hold while the host screendumps; it drops a 'quit' file when finished.
       for i in $(seq 1 120); do
-        [ -e /mnt/out/quit ] && break
+        [ -e /tmp/neoswc-vm-share/quit ] && break
         sleep 1
       done
 
