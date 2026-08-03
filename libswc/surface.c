@@ -300,10 +300,22 @@ surface_apply_pending(struct surface *surface, bool flush_children)
 	trim_region(&surface->state.opaque, buffer);
 
 	if (surface->view) {
-		if (surface->pending.commit & SURFACE_COMMIT_ATTACH) {
-			view_attach(surface->view, buffer);
+		if (surface->render_hold.held) {
+			/*
+			 * Record what to replay rather than what was committed: several
+			 * commits may arrive during one hold, and only the final state
+			 * is ever shown.
+			 */
+			if (surface->pending.commit & SURFACE_COMMIT_ATTACH) {
+				surface->render_hold.attach = true;
+			}
+			surface->render_hold.update = true;
+		} else {
+			if (surface->pending.commit & SURFACE_COMMIT_ATTACH) {
+				view_attach(surface->view, buffer);
+			}
+			view_update(surface->view);
 		}
-		view_update(surface->view);
 	}
 
 	surface->pending.commit = 0;
@@ -441,6 +453,9 @@ surface_new(struct wl_client *client, uint32_t version, uint32_t id)
 	surface->subsurface = NULL;
 	wl_list_init(&surface->subsurfaces);
 	surface->has_window_geometry = false;
+	surface->render_hold.held = false;
+	surface->render_hold.attach = false;
+	surface->render_hold.update = false;
 	surface->window_x = 0;
 	surface->window_y = 0;
 	surface->window_width = 0;
@@ -473,8 +488,83 @@ surface_set_view(struct surface *surface, struct view *view)
 
 	if (view) {
 		wl_list_insert(&view->handlers, &surface->view_handler.link);
-		view_attach(view, surface->state.buffer);
-		view_update(view);
+
+		/* Mapping a held surface must not bypass the hold. */
+		if (surface->render_hold.held) {
+			surface->render_hold.attach = true;
+			surface->render_hold.update = true;
+		} else {
+			view_attach(view, surface->state.buffer);
+			view_update(view);
+		}
+	}
+}
+
+/*
+ * Subsurfaces get their own compositor_view (see subsurface.c), so each has
+ * its own path to the screen. Holding only the toplevel would let a window's
+ * decorations or video pane update while its main content was held, which is
+ * precisely the tearing the hold exists to prevent.
+ */
+void
+surface_hold_render(struct surface *surface)
+{
+	struct subsurface *subsurface;
+
+	if (!surface || surface->render_hold.held) {
+		return;
+	}
+
+	surface->render_hold.held = true;
+
+	wl_list_for_each (subsurface, &surface->subsurfaces, link) {
+		if (subsurface->surface) {
+			surface_hold_render(subsurface->surface);
+		}
+	}
+}
+
+void
+surface_release_render(struct surface *surface)
+{
+	struct subsurface *subsurface;
+	bool attach, update;
+
+	if (!surface || !surface->render_hold.held) {
+		return;
+	}
+
+	/*
+	 * Children first, so that by the time the parent's buffer is promoted
+	 * every part of the window has its new content queued and the whole
+	 * thing composites in one frame.
+	 */
+	wl_list_for_each (subsurface, &surface->subsurfaces, link) {
+		if (subsurface->surface) {
+			surface_release_render(subsurface->surface);
+		}
+	}
+
+	attach = surface->render_hold.attach;
+	update = surface->render_hold.update;
+	surface->render_hold.held = false;
+	surface->render_hold.attach = false;
+	surface->render_hold.update = false;
+
+	if (!surface->view) {
+		return;
+	}
+
+	/*
+	 * state.buffer rather than a stashed pointer: the hold keeps no
+	 * reference of its own, so there is nothing to leak if the surface is
+	 * destroyed mid-hold, and repeated commits need no bookkeeping.
+	 */
+	if (attach) {
+		view_attach(surface->view, surface->state.buffer);
+	}
+	if (update) {
+		view_update(surface->view);
 	}
 }
 

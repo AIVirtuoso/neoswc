@@ -205,6 +205,7 @@ leave_transaction(struct window *window)
 	window->transaction = NULL;
 	wl_list_remove(&window->transaction_link);
 	wl_list_init(&window->transaction_link);
+	surface_release_render(window->view->surface);
 	transaction_remove(transaction, window);
 }
 
@@ -231,6 +232,14 @@ join_transaction(struct window *window, bool awaiting_ack)
 	window->transaction = window_transaction;
 	wl_list_insert(&transaction_windows, &window->transaction_link);
 
+	/*
+	 * Hold the window's commits for the duration of the cohort. Without
+	 * this the barrier only synchronises moves: a window that acks and
+	 * commits early would paint its new size at its old position while its
+	 * neighbours are still being configured.
+	 */
+	surface_hold_render(window->view->surface);
+
 	if (!awaiting_ack) {
 		transaction_ack(window_transaction, window, window->configure.serial);
 	}
@@ -256,13 +265,23 @@ transaction_done(struct transaction *transaction, bool timed_out, void *data)
 			 * A straggler. Leave move.pending and configure.pending set so
 			 * the per-window path picks it up when its buffer finally
 			 * arrives -- the protocol expects its dimensions in a later
-			 * render sequence, not never.
+			 * render sequence, not never. Release the hold regardless, or
+			 * an unresponsive window would stay frozen forever.
 			 */
+			surface_release_render(window->view->surface);
 			continue;
 		}
 
 		flush(window);
 		window->configure.pending = false;
+		/*
+		 * Move first, then promote the buffer. Both only queue damage; the
+		 * repaint is an idle callback, so everything dispatched before we
+		 * return to the event loop composites into a single frame. That is
+		 * what makes the relayout atomic on screen rather than merely
+		 * synchronised in bookkeeping.
+		 */
+		surface_release_render(window->view->surface);
 	}
 
 	window_transaction = NULL;

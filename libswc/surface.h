@@ -85,6 +85,19 @@ struct surface {
 	int32_t window_x, window_y;
 	int32_t window_width, window_height;
 	bool window_geometry_applied;
+
+	/*
+	 * Frame perfection. While held, a commit still lands in surface->state
+	 * -- the buffer is swapped, damage and frame callbacks accumulate -- but
+	 * is not propagated to the view, so nothing reaches the screen. The
+	 * skipped propagation is replayed when the hold is released.
+	 *
+	 * See surface_hold_render().
+	 */
+	struct {
+		bool held;
+		bool attach, update;
+	} render_hold;
 };
 
 struct surface *
@@ -97,5 +110,28 @@ bool
 surface_has_buffer(struct surface *surface);
 void
 surface_commit_pending(struct surface *surface);
+
+/*
+ * Stop propagating this surface's commits to its view.
+ *
+ * The protocol permits the compositor to "delay rendering new state committed
+ * by the windows" until the window manager has finished its render sequence.
+ * Holding is how that delay is implemented: commits continue to be accepted and
+ * applied to surface->state, so the client is never blocked at the protocol
+ * level, but nothing becomes visible.
+ *
+ * Frame callbacks accumulate unsent while held, which throttles a client that
+ * would otherwise spin producing frames nobody will see.
+ */
+void
+surface_hold_render(struct surface *surface);
+
+/*
+ * Resume propagation and replay whatever was skipped. Only the latest state is
+ * replayed -- intermediate frames committed during the hold are dropped, which
+ * is the point.
+ */
+void
+surface_release_render(struct surface *surface);
 
 #endif
