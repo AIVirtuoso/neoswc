@@ -1306,6 +1306,76 @@ swc_window_stack(struct swc_window *window, int32_t direction)
 	damage_views(view, other);
 }
 
+/*
+ * enum swc_stack_layer mirrors enum compositor_stack_layer. The public
+ * functions pass values straight through, so a divergence would silently
+ * restack windows into the wrong layer rather than fail to build.
+ */
+_Static_assert((int)SWC_STACK_LAYER_BACKGROUND == (int)STACK_LAYER_BACKGROUND &&
+                   (int)SWC_STACK_LAYER_BOTTOM == (int)STACK_LAYER_BOTTOM &&
+                   (int)SWC_STACK_LAYER_NORMAL == (int)STACK_LAYER_NORMAL &&
+                   (int)SWC_STACK_LAYER_TOP == (int)STACK_LAYER_TOP &&
+                   (int)SWC_STACK_LAYER_OVERLAY == (int)STACK_LAYER_OVERLAY,
+               "swc_stack_layer must match compositor_stack_layer");
+
+EXPORT void
+swc_window_set_stack_layer(struct swc_window *window,
+                           enum swc_stack_layer layer)
+{
+	struct compositor_view *view = view_for_window(window);
+
+	if (!view) {
+		return;
+	}
+
+	/*
+	 * Always raise. compositor_view_set_stack_layer() does nothing at all
+	 * when the layer is unchanged and raise is false, so passing false here
+	 * would make the call silently conditional on the window's current layer.
+	 */
+	compositor_view_set_stack_layer(view, layer, true);
+}
+
+EXPORT void
+swc_window_raise(struct swc_window *window)
+{
+	struct compositor_view *view = view_for_window(window);
+
+	if (!view) {
+		return;
+	}
+
+	restack_view_for_layer(view, true);
+	damage_view(view);
+	schedule_updates(view->base.screens);
+}
+
+EXPORT void
+swc_window_lower(struct swc_window *window)
+{
+	struct compositor_view *view = view_for_window(window);
+
+	if (!view) {
+		return;
+	}
+
+	/*
+	 * Not reachable through compositor_view_set_stack_layer(), which returns
+	 * early for an unchanged layer unless raising.
+	 */
+	restack_view_for_layer(view, false);
+	damage_view(view);
+	schedule_updates(view->base.screens);
+}
+
+EXPORT void
+swc_window_restack(struct swc_window *window, struct swc_window *sibling,
+                   bool above)
+{
+	compositor_view_restack(view_for_window(window), view_for_window(sibling),
+	                        above);
+}
+
 struct compositor_view *
 compositor_create_view(struct surface *surface)
 {

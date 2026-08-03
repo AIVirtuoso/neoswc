@@ -616,6 +616,55 @@ swc_window_at(int32_t x, int32_t y);
 void
 swc_window_stack(struct swc_window *window, int32_t direction);
 
+/**
+ * Stacking layers, ordered from back to front.
+ *
+ * A window is always stacked within its layer: nothing in SWC_STACK_LAYER_TOP
+ * can be drawn below something in SWC_STACK_LAYER_NORMAL, whatever the
+ * per-window ordering says. New windows start in SWC_STACK_LAYER_NORMAL.
+ */
+enum swc_stack_layer {
+	SWC_STACK_LAYER_BACKGROUND = 0,
+	SWC_STACK_LAYER_BOTTOM = 1,
+	SWC_STACK_LAYER_NORMAL = 2,
+	SWC_STACK_LAYER_TOP = 3,
+	SWC_STACK_LAYER_OVERLAY = 4,
+};
+
+/**
+ * Move the window to a stacking layer, placing it at the front of that layer.
+ *
+ * Use swc_window_raise or swc_window_lower to reposition it within the layer
+ * afterwards.
+ */
+void
+swc_window_set_stack_layer(struct swc_window *window,
+                           enum swc_stack_layer layer);
+
+/**
+ * Move the window to the front of its stacking layer.
+ */
+void
+swc_window_raise(struct swc_window *window);
+
+/**
+ * Move the window to the back of its stacking layer.
+ */
+void
+swc_window_lower(struct swc_window *window);
+
+/**
+ * Stack the window directly above or below another window.
+ *
+ * Has no effect if either window is invalid, or if they are the same window.
+ * The two windows do not have to be in the same stacking layer, but the layer
+ * ordering still wins: restacking a window relative to a sibling in another
+ * layer will not lift it out of its own.
+ */
+void
+swc_window_restack(struct swc_window *window, struct swc_window *sibling,
+                   bool above);
+
 /* }}} */
 
 /* Keyboard repeat rate (characters per second) and delay (ms) definitions.
