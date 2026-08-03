@@ -227,6 +227,18 @@ bool
 swc_screen_get_wl_output_name(struct swc_screen *screen,
                               struct wl_client *client, uint32_t *name);
 
+/**
+ * Get the registry name of the compositor's wl_seat global, as seen by the
+ * given client.
+ *
+ * The counterpart of swc_screen_get_wl_output_name for input. swc has a single
+ * seat, so there is no seat argument.
+ *
+ * Returns false if the client has not been shown the global.
+ */
+bool
+swc_get_wl_seat_name(struct wl_client *client, uint32_t *name);
+
 /* }}} */
 
 /* Windows {{{ */

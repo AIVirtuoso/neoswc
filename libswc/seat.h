@@ -30,6 +30,13 @@ struct swc_seat {
 	struct pointer *pointer;
 	struct keyboard *keyboard;
 	struct data_device *data_device;
+
+	/*
+	 * The wl_seat global. Here rather than in each backend's private struct
+	 * so code that is backend-independent -- swc_get_wl_seat_name() -- can
+	 * reach it.
+	 */
+	struct wl_global *global;
 };
 
 struct swc_seat *

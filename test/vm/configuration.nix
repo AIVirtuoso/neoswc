@@ -268,6 +268,7 @@
         # Reported separately: the output events arrive first and were being
         # cut off by the tail below.
         say "wm client outputs: $(grep -E '^wmclient: (new output|output )' /tmp/wmclient.log | tr '\n' '|')"
+        say "wm client seat: $(grep -E '^wmclient: (new seat|seat )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client log: $(tr '\n' '|' < /tmp/wmclient.log | tail -c 1200)"
       fi
       say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"

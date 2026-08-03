@@ -121,6 +121,18 @@ swc_deactivate(void)
 }
 
 EXPORT bool
+swc_get_wl_seat_name(struct wl_client *client, uint32_t *name)
+{
+	if (!client || !name || !swc.seat || !swc.seat->global) {
+		return false;
+	}
+
+	/* Per-client; 0 means this client has not been shown the global. */
+	*name = wl_global_get_name(swc.seat->global, client);
+	return *name != 0;
+}
+
+EXPORT bool
 swc_cursor_position(int32_t *x, int32_t *y)
 {
 	if (x) {

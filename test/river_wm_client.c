@@ -29,6 +29,7 @@ struct window {
 };
 
 static struct river_window_manager_v1 *manager;
+static struct river_seat_v1 *the_seat;
 static struct window windows[MAX_WINDOWS];
 static unsigned num_windows;
 static bool running = true;
@@ -286,6 +287,16 @@ manager_render_start(void *data, struct river_window_manager_v1 *proxy)
 		}
 	}
 
+	/* Focus the most recently added window, which exercises the seat. */
+	if (the_seat && live > 0) {
+		for (i = num_windows; i > 0; --i) {
+			if (!windows[i - 1].closed) {
+				river_seat_v1_focus_window(the_seat, windows[i - 1].proxy);
+				break;
+			}
+		}
+	}
+
 	say("render_start: positioned %u window(s)", live);
 	river_window_manager_v1_render_finish(proxy);
 }
@@ -379,12 +390,85 @@ manager_output(void *data, struct river_window_manager_v1 *proxy,
 }
 
 static void
+seat_removed(void *data, struct river_seat_v1 *proxy)
+{
+	(void)data;
+	say("seat removed");
+	river_seat_v1_destroy(proxy);
+}
+
+static void
+seat_wl_seat(void *data, struct river_seat_v1 *proxy, uint32_t name)
+{
+	(void)data;
+	(void)proxy;
+	say("seat wl_seat global %u", name);
+}
+
+static void
+seat_pointer_enter(void *data, struct river_seat_v1 *proxy,
+                   struct river_window_v1 *window)
+{
+	(void)data;
+	(void)proxy;
+	(void)window;
+}
+
+static void
+seat_none(void *data, struct river_seat_v1 *proxy)
+{
+	(void)data;
+	(void)proxy;
+}
+
+static void
+seat_window(void *data, struct river_seat_v1 *proxy,
+            struct river_window_v1 *window)
+{
+	(void)data;
+	(void)proxy;
+	(void)window;
+}
+
+static void
+seat_shell_surface(void *data, struct river_seat_v1 *proxy,
+                   struct river_shell_surface_v1 *shell_surface)
+{
+	(void)data;
+	(void)proxy;
+	(void)shell_surface;
+}
+
+static void
+seat_xy(void *data, struct river_seat_v1 *proxy, int32_t x, int32_t y)
+{
+	(void)data;
+	(void)proxy;
+	(void)x;
+	(void)y;
+}
+
+static const struct river_seat_v1_listener seat_listener = {
+    .removed = seat_removed,
+    .wl_seat = seat_wl_seat,
+    .pointer_enter = seat_pointer_enter,
+    .pointer_leave = seat_none,
+    .window_interaction = seat_window,
+    .shell_surface_interaction = seat_shell_surface,
+    .op_delta = seat_xy,
+    .op_release = seat_none,
+    .pointer_position = seat_xy,
+};
+
+static void
 manager_seat(void *data, struct river_window_manager_v1 *proxy,
              struct river_seat_v1 *seat)
 {
 	(void)data;
 	(void)proxy;
-	(void)seat;
+	the_seat = seat;
+	river_seat_v1_add_listener(seat, &seat_listener, NULL);
+	say("new seat");
 }
 
 static const struct river_window_manager_v1_listener manager_listener = {

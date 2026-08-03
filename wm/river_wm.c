@@ -70,6 +70,7 @@ static struct {
 
 	struct wl_list windows;
 	struct wl_list outputs;
+	struct wl_resource *seat;
 	struct swc_screen *screen;
 } wm;
 
@@ -251,6 +252,151 @@ advertise_output(struct river_output *output)
 	}
 
 	send_output_geometry(output);
+}
+
+/* ------------------------------------------------------------------ seat */
+
+static void
+seat_destroy_request(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+seat_focus_window(struct wl_client *client, struct wl_resource *resource,
+                  struct wl_resource *window_resource)
+{
+	struct river_window *window;
+
+	(void)client;
+	(void)resource;
+
+	if (!window_resource) {
+		swc_window_focus(NULL);
+		return;
+	}
+
+	window = wl_resource_get_user_data(window_resource);
+	if (window && !window->closed) {
+		swc_window_focus(window->swc);
+	}
+}
+
+static void
+seat_clear_focus(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+	swc_window_focus(NULL);
+}
+
+static void
+seat_ignore(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+}
+
+static void
+seat_focus_shell_surface(struct wl_client *client,
+                         struct wl_resource *resource,
+                         struct wl_resource *shell_surface)
+{
+	(void)client;
+	(void)resource;
+	(void)shell_surface; /* shell surfaces are not implemented */
+}
+
+static void
+seat_get_pointer_binding(struct wl_client *client, struct wl_resource *resource,
+                         uint32_t id, uint32_t button, uint32_t modifiers)
+{
+	struct wl_resource *binding;
+
+	(void)button;
+	(void)modifiers;
+
+	/*
+	 * Inert. swc_add_binding could back this, but the protocol's bindings
+	 * carry press/release events the manager acts on, and wiring that needs
+	 * the seat's event stream. Handing back a live object beats disconnecting
+	 * a manager that merely asked.
+	 */
+	binding = wl_resource_create(client, &river_pointer_binding_v1_interface,
+	                             wl_resource_get_version(resource), id);
+	if (!binding) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(binding, NULL, NULL, NULL);
+}
+
+static void
+seat_set_xcursor_theme(struct wl_client *client, struct wl_resource *resource,
+                       const char *theme, uint32_t size)
+{
+	(void)client;
+	(void)resource;
+	(void)theme;
+	(void)size; /* xcursor theme loading is Tier 2 */
+}
+
+static void
+seat_pointer_warp(struct wl_client *client, struct wl_resource *resource,
+                  int32_t x, int32_t y)
+{
+	(void)client;
+	(void)resource;
+	(void)x;
+	(void)y; /* no public pointer warp in swc yet */
+}
+
+static const struct river_seat_v1_interface seat_impl = {
+    .destroy = seat_destroy_request,
+    .focus_window = seat_focus_window,
+    .focus_shell_surface = seat_focus_shell_surface,
+    .clear_focus = seat_clear_focus,
+    .op_start_pointer = seat_ignore,
+    .op_end = seat_ignore,
+    .get_pointer_binding = seat_get_pointer_binding,
+    .set_xcursor_theme = seat_set_xcursor_theme,
+    .pointer_warp = seat_pointer_warp,
+};
+
+static void
+seat_resource_destroy(struct wl_resource *resource)
+{
+	if (wm.seat == resource) {
+		wm.seat = NULL;
+	}
+}
+
+static void
+advertise_seat(void)
+{
+	struct wl_client *client;
+	uint32_t name;
+
+	if (wm.seat || !wm.manager) {
+		return;
+	}
+
+	client = wl_resource_get_client(wm.manager);
+	wm.seat = wl_resource_create(client, &river_seat_v1_interface,
+	                             wl_resource_get_version(wm.manager), 0);
+	if (!wm.seat) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(wm.seat, &seat_impl, NULL,
+	                               seat_resource_destroy);
+	river_window_manager_v1_send_seat(wm.manager, wm.seat);
+
+	/* swc is single-seat, so there is exactly one of these. */
+	if (swc_get_wl_seat_name(client, &name)) {
+		river_seat_v1_send_wl_seat(wm.seat, name);
+	}
 }
 
 /* ---------------------------------------------------------------- window */
@@ -595,6 +741,8 @@ begin_manage(void)
 		advertise_output(output);
 	}
 
+	advertise_seat();
+
 	wl_list_for_each (window, &wm.windows, link) {
 		advertise_window(window);
 		window->has_proposal = false;
@@ -825,6 +973,7 @@ manager_resource_destroy(struct wl_resource *resource)
 		output->resource = NULL;
 		output->advertised = false;
 	}
+	wm.seat = NULL;
 }
 
 static void
@@ -963,10 +1112,27 @@ handle_window_app_id(void *data)
 	}
 }
 
+static void
+handle_window_entered(void *data)
+{
+	struct river_window *window = data;
+
+	/*
+	 * swc reports the pointer entering a window but has no matching "left",
+	 * so pointer_leave is never sent. A manager using pointer_enter for
+	 * focus-follows-mouse still works; one that tracks enter/leave pairs will
+	 * not. Needs a leave callback in swc (Tier 2).
+	 */
+	if (wm.seat && window->resource) {
+		river_seat_v1_send_pointer_enter(wm.seat, window->resource);
+	}
+}
+
 static const struct swc_window_handler window_handler = {
     .destroy = handle_window_destroy,
     .title_changed = handle_window_title,
     .app_id_changed = handle_window_app_id,
+    .entered = handle_window_entered,
 };
 
 void

@@ -46,7 +46,6 @@ struct seat {
 	struct pointer pointer;
 	struct wl_listener data_device_listener;
 
-	struct wl_global *global;
 	struct wl_list resources;
 
 	wl_fixed_t abs_x;
@@ -600,9 +599,9 @@ seat_create(struct wl_display *display, const char *seat_name)
 		goto error2;
 	}
 
-	seat->global =
+	seat->base.global =
 	    wl_global_create(display, &wl_seat_interface, 4, seat, &bind_seat);
-	if (!seat->global) {
+	if (!seat->base.global) {
 		goto error2;
 	}
 	seat->capabilities =
@@ -656,7 +655,7 @@ error5:
 error4:
 	data_device_destroy(seat->base.data_device);
 error3:
-	wl_global_destroy(seat->global);
+	wl_global_destroy(seat->base.global);
 error2:
 	free(seat->name);
 error1:
@@ -685,7 +684,7 @@ seat_destroy(struct swc_seat *seat_base)
 	keyboard_destroy(seat->base.keyboard);
 	data_device_destroy(seat->base.data_device);
 
-	wl_global_destroy(seat->global);
+	wl_global_destroy(seat->base.global);
 	free(seat->name);
 	free(seat);
 }
