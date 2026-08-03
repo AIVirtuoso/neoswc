@@ -45,8 +45,11 @@ struct window {
 	struct wl_list link;
 };
 
-static const char *terminal_command[] = {"st-wl", NULL};
-static const char *dmenu_command[] = {"dmenu_run-wl", NULL};
+/* Overridable, because the defaults are not installed everywhere and a
+ * keybinding that silently spawns nothing is hard to tell from a broken
+ * compositor. */
+static const char *terminal_command[] = {NULL, NULL};
+static const char *dmenu_command[] = {NULL, NULL};
 static const uint32_t border_width = 1;
 /* How long a relayout waits for windows to respond before giving up on the
  * stragglers and showing what it has. */
@@ -350,6 +353,17 @@ main(int argc, char *argv[])
 	if (!swc_initialize(display, NULL, &manager)) {
 		return EXIT_FAILURE;
 	}
+
+	terminal_command[0] = getenv("TERMINAL");
+	if (!terminal_command[0]) {
+		terminal_command[0] = "foot";
+	}
+	dmenu_command[0] = getenv("MENU");
+	if (!dmenu_command[0]) {
+		dmenu_command[0] = "fuzzel";
+	}
+	fprintf(stderr, "wm: Logo+Return spawns %s, Logo+r spawns %s, Logo+q quits\n",
+	        terminal_command[0], dmenu_command[0]);
 
 	swc_add_binding(SWC_BINDING_KEY, SWC_MOD_LOGO, XKB_KEY_Return, &spawn,
 	                terminal_command);

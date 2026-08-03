@@ -22,7 +22,7 @@
 #   river  neoswc serving the river protocols, with rill as the manager.
 set -u
 
-NEOSWC="${NEOSWC:-/nix/store/n9zmd3mh6lpjhxqac4pfdrkvyir6sgs5-neoswc-0.0}"
+NEOSWC="${NEOSWC:-/nix/store/jr0xdn9mda055bl2p742fz4xlhnp0i4f-neoswc-0.0}"
 MODE="${1:-wm}"
 LOG=/tmp/neoswc-hw.log
 
@@ -63,6 +63,24 @@ export WLD_DRM_DUMB="${WLD_DRM_DUMB-1}"
 # backtrace is worse than none.
 ulimit -c unlimited 2>/dev/null || true
 echo '/tmp/neoswc-hw-core.%e.%p' > /proc/sys/kernel/core_pattern 2>/dev/null || true
+
+# Spawn one client once the compositor is up, so there is something on screen
+# without needing a keybinding to work first. swc-launch sets XDG_RUNTIME_DIR
+# to this when it is unset, and the socket lands there.
+RT=/tmp/XDG_RUNTIME_DIR_0
+(
+	for _ in $(seq 1 40); do
+		sock=$(ls "$RT"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+		if [ -n "$sock" ]; then
+			XDG_RUNTIME_DIR="$RT" WAYLAND_DISPLAY="$(basename "$sock")" \
+				"${TERMINAL:-foot}" >> "$LOG" 2>&1 &
+			echo "spawned ${TERMINAL:-foot} on $(basename "$sock")" >> "$LOG"
+			exit 0
+		fi
+		sleep 0.25
+	done
+	echo "no wayland socket appeared in $RT" >> "$LOG"
+) &
 
 case "$MODE" in
 river)
