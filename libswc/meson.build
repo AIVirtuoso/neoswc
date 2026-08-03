@@ -56,7 +56,12 @@ libswc_src += swc_transaction_src
 libswc_src += [cursor, launch_protocol]
 
 foreach proto, proto_src : protos
-	libswc_src += proto_src
+	# river-window-management-v1 is implemented by the compositor in wm/, not
+	# by libswc, and -fvisibility=hidden would keep the interface symbols out
+	# of reach anyway. wm/ compiles it directly.
+	if proto != 'river-window-management-v1'
+		libswc_src += proto_src
+	endif
 endforeach
 
 libswc_lib = library(

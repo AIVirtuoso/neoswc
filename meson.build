@@ -92,6 +92,7 @@ if get_option('example')
   subdir('example')
 endif
 
+subdir('wm')
 subdir('test')
 
 summary({

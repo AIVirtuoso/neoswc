@@ -147,6 +147,11 @@
       if [ -x /tmp/neoswc-vm-share/zig-wm ]; then
         WM=/tmp/neoswc-vm-share/zig-wm
         say "using the Zig window manager"
+      elif [ "$(cat /tmp/neoswc-vm-share/mode 2>/dev/null)" = river ]; then
+        # neoswc does no window management itself: it serves
+        # river-window-management-v1 and a separate client decides the layout.
+        WM=neoswc
+        say "using neoswc with the river protocol"
       fi
 
       say "starting compositor"
@@ -199,6 +204,14 @@
       export WAYLAND_DISPLAY="$(basename "$sock")"
       say "compositor up on $WAYLAND_DISPLAY"
 
+      # In river mode the layout comes from a protocol client, so it has to be
+      # running before any window appears.
+      if [ "$WM" = neoswc ]; then
+        setsid river-wm-client > /tmp/wmclient.log 2>&1 &
+        sleep 2
+        say "wm client: $(head -2 /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+      fi
+
       # The example wm grid-tiles on every add, so each new client triggers a
       # multi-window relayout -- the exact operation the barrier makes atomic.
       # Keep their output: a client that dies silently is the whole problem.
@@ -250,6 +263,10 @@
       # The whole point: did the cohort actually run, and did it complete
       # rather than time out? A screenshot cannot tell these apart.
       say "relayouts: $(grep -cE "^(arrange|zig-wm): relayout" /tmp/neoswc.log 2>/dev/null)"
+      if [ -s /tmp/wmclient.log ]; then
+        say "wm client sequences: manage=$(grep -c 'manage_start:' /tmp/wmclient.log) render=$(grep -c 'render_start:' /tmp/wmclient.log)"
+        say "wm client log: $(tr '\n' '|' < /tmp/wmclient.log | tail -c 1200)"
+      fi
       say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
       say "foot1 log: $(cat /tmp/foot1.log 2>/dev/null | tr '\n' '|')"
       say "foot2 log: $(cat /tmp/foot2.log 2>/dev/null | tr '\n' '|')"
