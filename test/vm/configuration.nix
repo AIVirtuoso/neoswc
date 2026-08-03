@@ -18,6 +18,21 @@
   neoswc,
   ...
 }:
+let
+  # fuzzel segfaults against this compositor on real hardware, inside its own
+  # wayl_refresh(). A stripped backtrace only reached the nearest symbol, so
+  # build it with DWARF: the guest is where the crash can be caught with a core
+  # and locals rather than inferred.
+  fuzzel-dbg = pkgs.fuzzel.overrideAttrs (o: {
+    mesonBuildType = "debugoptimized";
+    # Assertions left on deliberately: fuzzel asserts both that
+    # zxdg_output_manager_v1 was advertised before wl_output and that the
+    # output scale it ends up with is >= 1. Those are the two things the
+    # compositor was getting wrong, so an assertion build is the stricter test.
+    dontStrip = true;
+    separateDebugInfo = false;
+  });
+in
 {
   system.stateVersion = "26.05";
 
@@ -67,6 +82,7 @@
   environment.systemPackages = [
     neoswc
     pkgs.foot
+    fuzzel-dbg
     pkgs.libdrm # modetest
     pkgs.wayland-utils
   ];
@@ -101,6 +117,7 @@
     path = [
       neoswc
       pkgs.foot
+      fuzzel-dbg
       pkgs.libdrm
       pkgs.coreutils
       pkgs.procps
@@ -241,6 +258,35 @@
       say "MARK one-window (foot1: $(ps -eo comm | grep -c '^foot$') alive)"
       touch /tmp/neoswc-vm-share/mark-one
 
+      # fuzzel is a layer-shell client and it segfaults against this compositor
+      # on real hardware. Run it here, with one window already up, and get out
+      # of the way again: it takes keyboard focus, which would otherwise wreck
+      # the focus and binding measurements later in this script.
+      printf 'alpha\nbeta\ngamma\n' | setsid env WAYLAND_DEBUG=1 \
+        fuzzel --dmenu --log-level=debug --log-no-syslog \
+        > /tmp/fuzzel.log 2>&1 &
+      sleep 5
+      say "fuzzel alive: $(pgrep -c -x fuzzel || true)"
+      say "MARK fuzzel"
+      touch /tmp/neoswc-vm-share/mark-fuzzel
+      wait_host fuzzel
+      pkill -x fuzzel 2>/dev/null || true
+      sleep 1
+      cp /tmp/fuzzel.log /tmp/neoswc-vm-share/fuzzel.log 2>/dev/null || true
+      say "fuzzel own log: $(grep -vE '^\[[0-9]+\.[0-9]+\]' /tmp/fuzzel.log 2>/dev/null | tail -c 1500 | tr '\n' '|')"
+      say "fuzzel wire tail: $(tail -c 2500 /tmp/fuzzel.log 2>/dev/null | tr '\n' '|')"
+      say "fuzzel crash: $(dmesg | grep -iE 'fuzzel.*(segfault|trap)' | tail -2 | tr '\n' '|')"
+      fcore=$(ls -t /tmp/neoswc-vm-share/core.fuzzel.* 2>/dev/null | head -1)
+      if [ -n "$fcore" ]; then
+        say "fuzzel backtrace:"
+        gdb -batch -n -ex 'set pagination off' -ex 'bt full' \
+          "$(command -v fuzzel)" "$fcore" 2>&1 \
+          | grep -vE '^\[|^Using host|^Core was|warning:' | head -60 \
+          | while read -r l; do say "  $l"; done
+      else
+        say "fuzzel: no core file"
+      fi
+
       setsid foot ${pkgs.coreutils}/bin/sleep 3600 > /tmp/foot2.log 2>&1 &
       sleep 4
       say "MARK two-windows (foot2: $(ps -eo comm | grep -c '^foot$') alive)"
@@ -290,7 +336,7 @@
       say "clients: $(ps -eo comm | grep -c '^foot$') foot process(es)"
       say "compositor alive: $(pgrep -c -x neoswc || true)"
       say "crash: $(dmesg | grep -iE 'segfault|general protection|trap ' | tail -3 | tr '\n' '|')"
-      core=$(ls -t /tmp/neoswc-vm-share/core.* 2>/dev/null | head -1)
+      core=$(ls -t /tmp/neoswc-vm-share/core.neoswc* 2>/dev/null | head -1)
       if [ -n "$core" ]; then
         say "backtrace:"
         gdb -batch -n -ex "bt" "$(command -v neoswc)" "$core" 2>&1 | grep -E "^#" | head -20 | while read -r l; do say "  $l"; done

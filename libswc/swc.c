@@ -194,9 +194,21 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error4;
 	}
 
+	/* Created before screens_initialize(), which is where the wl_output
+	 * globals are advertised. Registry order is not specified by the
+	 * protocol, but a client that binds wl_output and then wants its name
+	 * has to ask zxdg_output_manager_v1 for it; fuzzel assumes the manager
+	 * has already been advertised and silently gives up on the name and
+	 * the DPI when it has not. */
+	swc.xdg_output_manager = xdg_output_manager_create(display);
+	if (!swc.xdg_output_manager) {
+		ERROR("Could not initialize XDG output manager\n");
+		goto error5;
+	}
+
 	if (!screens_initialize()) {
 		ERROR("Could not initialize screens\n");
-		goto error5;
+		goto error_xdg_output;
 	}
 
 	if (!compositor_initialize()) {
@@ -271,12 +283,6 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error17;
 	}
 
-	swc.xdg_output_manager = xdg_output_manager_create(display);
-	if (!swc.xdg_output_manager) {
-		ERROR("Could not initialize XDG output manager\n");
-		goto error17;
-	}
-
 	setup_compositor();
 
 	return true;
@@ -307,6 +313,8 @@ error7:
 	compositor_finalize();
 error6:
 	screens_finalize();
+error_xdg_output:
+	wl_global_destroy(swc.xdg_output_manager);
 error5:
 	wl_global_destroy(swc.subcompositor);
 error4:

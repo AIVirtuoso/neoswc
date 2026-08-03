@@ -61,6 +61,12 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	}
 
 	if (version >= 2) {
+		/* swc does not scale outputs, but the event must still be sent.
+		 * The protocol says a client may assume 1 when it is absent;
+		 * clients that instead default their own field to 0 and wait
+		 * for the event then divide by that scale. fuzzel does exactly
+		 * that and renders a 0x0 buffer. */
+		wl_output_send_scale(resource, 1);
 		wl_output_send_done(resource);
 	}
 }
