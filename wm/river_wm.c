@@ -18,6 +18,7 @@
 
 #include "river_wm.h"
 
+#include "river-layer-shell-v1-server-protocol.h"
 #include "river-window-management-v1-server-protocol.h"
 
 #include <stdlib.h>
@@ -55,6 +56,7 @@ struct river_window {
 struct river_output {
 	struct wl_list link;
 	struct wl_resource *resource; /* NULL until advertised */
+	struct wl_resource *layer_shell; /* river_layer_shell_output_v1 */
 	struct swc_screen *swc;
 	bool advertised;
 };
@@ -71,6 +73,8 @@ static struct {
 	struct wl_list windows;
 	struct wl_list outputs;
 	struct wl_resource *seat;
+	struct wl_resource *layer_seat;
+	struct wl_global *layer_shell_global;
 	struct swc_screen *screen;
 } wm;
 
@@ -209,14 +213,27 @@ send_output_geometry(struct river_output *output)
 {
 	const struct swc_rectangle *geometry;
 
-	if (!output->resource) {
-		return;
+	if (output->resource) {
+		geometry = &output->swc->geometry;
+		river_output_v1_send_position(output->resource, geometry->x,
+		                              geometry->y);
+		river_output_v1_send_dimensions(
+		    output->resource, (int32_t)geometry->width,
+		    (int32_t)geometry->height);
 	}
 
-	geometry = &output->swc->geometry;
-	river_output_v1_send_position(output->resource, geometry->x, geometry->y);
-	river_output_v1_send_dimensions(output->resource, (int32_t)geometry->width,
-	                                (int32_t)geometry->height);
+	/*
+	 * swc's usable_geometry is the screen minus the exclusive zones of layer
+	 * surfaces, which is exactly what non_exclusive_area means. It changes
+	 * whenever a panel docks or undocks, so this is sent from the same place
+	 * as the geometry.
+	 */
+	if (output->layer_shell) {
+		geometry = &output->swc->usable_geometry;
+		river_layer_shell_output_v1_send_non_exclusive_area(
+		    output->layer_shell, geometry->x, geometry->y,
+		    (int32_t)geometry->width, (int32_t)geometry->height);
+	}
 }
 
 static void
@@ -252,6 +269,169 @@ advertise_output(struct river_output *output)
 	}
 
 	send_output_geometry(output);
+}
+
+/* ----------------------------------------------------------- layer shell */
+
+/*
+ * river's layer shell, which is not zwlr_layer_shell_v1. That one is a client
+ * protocol swc already implements; this one tells the *window manager* about
+ * layer surfaces so it can lay windows out around them.
+ *
+ * Binding the global is how a manager declares it handles layer surfaces at
+ * all. swc places them itself via layer_shell.c and reflects the result in
+ * each screen's usable_geometry, so what the manager needs from us is that
+ * area -- which is exactly the non_exclusive_area event.
+ */
+
+static void
+layer_output_destroy_request(struct wl_client *client,
+                             struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+layer_output_set_default(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+	/*
+	 * Which output an unplaced layer surface lands on. swc decides that in
+	 * layer_shell.c without consulting anyone, so recording the manager's
+	 * preference would not change the outcome. Accepted so the manager is not
+	 * disconnected for expressing it.
+	 */
+}
+
+static const struct river_layer_shell_output_v1_interface layer_output_impl = {
+    .destroy = layer_output_destroy_request,
+    .set_default = layer_output_set_default,
+};
+
+static void
+layer_output_resource_destroy(struct wl_resource *resource)
+{
+	struct river_output *output = wl_resource_get_user_data(resource);
+
+	if (output && output->layer_shell == resource) {
+		output->layer_shell = NULL;
+	}
+}
+
+static void
+layer_seat_destroy_request(struct wl_client *client,
+                           struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static const struct river_layer_shell_seat_v1_interface layer_seat_impl = {
+    .destroy = layer_seat_destroy_request,
+};
+
+static void
+layer_seat_resource_destroy(struct wl_resource *resource)
+{
+	if (wm.layer_seat == resource) {
+		wm.layer_seat = NULL;
+	}
+}
+
+static void
+layer_shell_destroy_request(struct wl_client *client,
+                            struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+layer_shell_get_output(struct wl_client *client, struct wl_resource *resource,
+                       uint32_t id, struct wl_resource *output_resource)
+{
+	struct river_output *output = wl_resource_get_user_data(output_resource);
+	struct wl_resource *layer_output;
+
+	if (output && output->layer_shell) {
+		wl_resource_post_error(
+		    resource, RIVER_LAYER_SHELL_V1_ERROR_OBJECT_ALREADY_CREATED,
+		    "layer shell output already created for this output");
+		return;
+	}
+
+	layer_output =
+	    wl_resource_create(client, &river_layer_shell_output_v1_interface,
+	                       wl_resource_get_version(resource), id);
+	if (!layer_output) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(layer_output, &layer_output_impl, output,
+	                               layer_output_resource_destroy);
+
+	if (output) {
+		output->layer_shell = layer_output;
+		send_output_geometry(output);
+	}
+}
+
+static void
+layer_shell_get_seat(struct wl_client *client, struct wl_resource *resource,
+                     uint32_t id, struct wl_resource *seat_resource)
+{
+	struct wl_resource *layer_seat;
+
+	(void)seat_resource;
+
+	if (wm.layer_seat) {
+		wl_resource_post_error(
+		    resource, RIVER_LAYER_SHELL_V1_ERROR_OBJECT_ALREADY_CREATED,
+		    "layer shell seat already created for this seat");
+		return;
+	}
+
+	layer_seat = wl_resource_create(client,
+	                                &river_layer_shell_seat_v1_interface,
+	                                wl_resource_get_version(resource), id);
+	if (!layer_seat) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	/*
+	 * The focus_exclusive / focus_non_exclusive / focus_none events are never
+	 * sent: swc's layer_shell.c decides keyboard interactivity for layer
+	 * surfaces itself and reports nothing, so there is nothing to forward. A
+	 * manager relying on those to track layer focus will not see it.
+	 */
+	wl_resource_set_implementation(layer_seat, &layer_seat_impl, NULL,
+	                               layer_seat_resource_destroy);
+	wm.layer_seat = layer_seat;
+}
+
+static const struct river_layer_shell_v1_interface layer_shell_impl = {
+    .destroy = layer_shell_destroy_request,
+    .get_output = layer_shell_get_output,
+    .get_seat = layer_shell_get_seat,
+};
+
+static void
+bind_layer_shell(struct wl_client *client, void *data, uint32_t version,
+                 uint32_t id)
+{
+	struct wl_resource *resource;
+
+	(void)data;
+
+	resource = wl_resource_create(client, &river_layer_shell_v1_interface,
+	                              (int)version, id);
+	if (!resource) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(resource, &layer_shell_impl, NULL, NULL);
 }
 
 /* ------------------------------------------------------------------ seat */
@@ -1020,7 +1200,15 @@ river_wm_create(struct wl_display *display)
 
 	wm.global = wl_global_create(display, &river_window_manager_v1_interface,
 	                             5, NULL, bind_manager);
-	return wm.global != NULL;
+	if (!wm.global) {
+		return false;
+	}
+
+	/* Advertising this is how the compositor says layer surfaces are handled
+	 * by the manager rather than dropped. */
+	wm.layer_shell_global = wl_global_create(
+	    display, &river_layer_shell_v1_interface, 1, NULL, bind_layer_shell);
+	return wm.layer_shell_global != NULL;
 }
 
 static void
