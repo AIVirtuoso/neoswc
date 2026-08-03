@@ -1,0 +1,41 @@
+name: sync-upstream
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refresh upstream branch
+        run: |
+          git remote add upstream https://git.sr.ht/~shrub900/neuswc
+          git fetch upstream main
+          git push origin upstream/main:refs/heads/upstream --force
+
+      - name: Open sync PR if there are new commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(git rev-list --count origin/main..upstream/main)
+          echo "$count new upstream commit(s)"
+          if [ "$count" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$(gh pr list --head upstream --state open --json number --jq 'length')" != "0" ]; then
+            echo "sync PR already open"
+            exit 0
+          fi
+          gh pr create --base main --head upstream \
+            --title "Sync upstream neuswc ($count commit(s))" \
+            --body "Automated sync from https://git.sr.ht/~shrub900/neuswc"
