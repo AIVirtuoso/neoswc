@@ -39,6 +39,7 @@ extern "C" {
 #endif
 
 struct libinput_device;
+struct wl_client;
 struct wl_display;
 struct wl_event_loop;
 struct wld_buffer;
@@ -210,6 +211,21 @@ struct swc_screen {
 void
 swc_screen_set_handler(struct swc_screen *screen,
                        const struct swc_screen_handler *handler, void *data);
+
+/**
+ * Get the registry name of the wl_output global corresponding to this screen,
+ * as seen by the given client.
+ *
+ * This lets a compositor tell a client which wl_output one of its own protocol
+ * objects refers to. Names are per-client, so the client must be the one that
+ * will receive the name.
+ *
+ * A screen may drive several outputs, in which case this reports the first.
+ * Returns false if the screen has no output, or none the client can see.
+ */
+bool
+swc_screen_get_wl_output_name(struct swc_screen *screen,
+                              struct wl_client *client, uint32_t *name);
 
 /* }}} */
 

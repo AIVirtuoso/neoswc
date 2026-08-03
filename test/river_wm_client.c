@@ -33,10 +33,10 @@ static struct window windows[MAX_WINDOWS];
 static unsigned num_windows;
 static bool running = true;
 
-/* The screen size is not queried; river_output_v1 is not implemented yet, so
- * this is fixed to the VM's mode. */
-static const int32_t screen_width = 1280;
-static const int32_t screen_height = 800;
+/* Learned from river_output_v1; these are only a fallback for the window that
+ * arrives before any output has been advertised. */
+static int32_t screen_width = 1280;
+static int32_t screen_height = 800;
 
 static void
 say(const char *fmt, ...)
@@ -316,12 +316,66 @@ manager_none(void *data, struct river_window_manager_v1 *proxy)
 }
 
 static void
+output_removed(void *data, struct river_output_v1 *proxy)
+{
+	(void)data;
+	say("output removed");
+	river_output_v1_destroy(proxy);
+}
+
+static void
+output_wl_output(void *data, struct river_output_v1 *proxy, uint32_t name)
+{
+	(void)data;
+	(void)proxy;
+	say("output wl_output global %u", name);
+}
+
+static void
+output_position(void *data, struct river_output_v1 *proxy, int32_t x,
+                int32_t y)
+{
+	(void)data;
+	(void)proxy;
+	say("output position %d,%d", x, y);
+}
+
+static void
+output_dimensions(void *data, struct river_output_v1 *proxy, int32_t width,
+                  int32_t height)
+{
+	(void)data;
+	(void)proxy;
+	screen_width = width;
+	screen_height = height;
+	say("output dimensions %dx%d", width, height);
+}
+
+static void
+output_capture_sessions(void *data, struct river_output_v1 *proxy,
+                        uint32_t count)
+{
+	(void)data;
+	(void)proxy;
+	(void)count;
+}
+
+static const struct river_output_v1_listener output_listener = {
+    .removed = output_removed,
+    .wl_output = output_wl_output,
+    .position = output_position,
+    .dimensions = output_dimensions,
+    .capture_sessions = output_capture_sessions,
+};
+
+static void
 manager_output(void *data, struct river_window_manager_v1 *proxy,
                struct river_output_v1 *output)
 {
 	(void)data;
 	(void)proxy;
-	(void)output;
+	river_output_v1_add_listener(output, &output_listener, NULL);
+	say("new output");
 }
 
 static void

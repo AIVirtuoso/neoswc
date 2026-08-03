@@ -265,6 +265,9 @@
       say "relayouts: $(grep -cE "^(arrange|zig-wm): relayout" /tmp/neoswc.log 2>/dev/null)"
       if [ -s /tmp/wmclient.log ]; then
         say "wm client sequences: manage=$(grep -c 'manage_start:' /tmp/wmclient.log) render=$(grep -c 'render_start:' /tmp/wmclient.log)"
+        # Reported separately: the output events arrive first and were being
+        # cut off by the tail below.
+        say "wm client outputs: $(grep -E '^wmclient: (new output|output )' /tmp/wmclient.log | tr '\n' '|')"
         say "wm client log: $(tr '\n' '|' < /tmp/wmclient.log | tail -c 1200)"
       fi
       say "$(grep '^arrange: relayout' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"

@@ -55,16 +55,21 @@ main(int argc, char *argv[])
 	setenv("WAYLAND_DISPLAY", socket, 1);
 	fprintf(stderr, "neoswc: listening on %s\n", socket);
 
-	if (!swc_initialize(display, NULL, &manager)) {
-		fprintf(stderr, "neoswc: failed to initialize swc\n");
-		return EXIT_FAILURE;
-	}
-
+	/*
+	 * Before swc_initialize: it calls new_screen for each screen it finds
+	 * while still inside the call, so the manager's state has to exist by
+	 * then.
+	 */
 	if (!river_wm_create(display)) {
 		fprintf(stderr, "neoswc: failed to create the window manager global\n");
 		return EXIT_FAILURE;
 	}
 	fprintf(stderr, "neoswc: river_window_manager_v1 advertised\n");
+
+	if (!swc_initialize(display, NULL, &manager)) {
+		fprintf(stderr, "neoswc: failed to initialize swc\n");
+		return EXIT_FAILURE;
+	}
 
 	wl_display_run(display);
 	wl_display_destroy(display);

@@ -60,6 +60,34 @@ swc_screen_set_handler(struct swc_screen *base,
 	screen->handler_data = data;
 }
 
+EXPORT bool
+swc_screen_get_wl_output_name(struct swc_screen *base,
+                              struct wl_client *client, uint32_t *name)
+{
+	struct screen *screen = INTERNAL(base);
+	struct output *output;
+
+	if (!screen || !client || !name) {
+		return false;
+	}
+
+	wl_list_for_each (output, &screen->outputs, link) {
+		if (!output->global) {
+			continue;
+		}
+		/*
+		 * Global names are per-client: this is 0 if the client has not been
+		 * shown the global, which is not a name it could ever use.
+		 */
+		*name = wl_global_get_name(output->global, client);
+		if (*name != 0) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool
 screens_initialize(void)
 {

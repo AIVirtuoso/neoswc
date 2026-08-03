@@ -52,6 +52,13 @@ struct river_window {
 	int32_t sent_width, sent_height;
 };
 
+struct river_output {
+	struct wl_list link;
+	struct wl_resource *resource; /* NULL until advertised */
+	struct swc_screen *swc;
+	bool advertised;
+};
+
 static struct {
 	struct wl_display *display;
 	struct wl_global *global;
@@ -62,6 +69,7 @@ static struct {
 	bool dirty; /* state changed, or manage_dirty was requested */
 
 	struct wl_list windows;
+	struct wl_list outputs;
 	struct swc_screen *screen;
 } wm;
 
@@ -158,6 +166,91 @@ node_resource_destroy(struct wl_resource *resource)
 	if (window && window->node == resource) {
 		window->node = NULL;
 	}
+}
+
+/* ---------------------------------------------------------------- output */
+
+static void
+output_destroy_request(struct wl_client *client, struct wl_resource *resource)
+{
+	(void)client;
+	wl_resource_destroy(resource);
+}
+
+static void
+output_set_presentation_mode(struct wl_client *client,
+                             struct wl_resource *resource, uint32_t mode)
+{
+	(void)client;
+	(void)resource;
+	(void)mode; /* tearing-control is not implemented */
+}
+
+static const struct river_output_v1_interface output_impl = {
+    .destroy = output_destroy_request,
+    .set_presentation_mode = output_set_presentation_mode,
+};
+
+static void
+output_resource_destroy(struct wl_resource *resource)
+{
+	struct river_output *output = wl_resource_get_user_data(resource);
+
+	if (output && output->resource == resource) {
+		output->resource = NULL;
+		output->advertised = false;
+	}
+}
+
+/* Position and size, sent on advertisement and whenever they change. */
+static void
+send_output_geometry(struct river_output *output)
+{
+	const struct swc_rectangle *geometry;
+
+	if (!output->resource) {
+		return;
+	}
+
+	geometry = &output->swc->geometry;
+	river_output_v1_send_position(output->resource, geometry->x, geometry->y);
+	river_output_v1_send_dimensions(output->resource, (int32_t)geometry->width,
+	                                (int32_t)geometry->height);
+}
+
+static void
+advertise_output(struct river_output *output)
+{
+	struct wl_client *client;
+	uint32_t name;
+
+	if (output->advertised || !wm.manager) {
+		return;
+	}
+
+	client = wl_resource_get_client(wm.manager);
+	output->resource =
+	    wl_resource_create(client, &river_output_v1_interface,
+	                       wl_resource_get_version(wm.manager), 0);
+	if (!output->resource) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(output->resource, &output_impl, output,
+	                               output_resource_destroy);
+	river_window_manager_v1_send_output(wm.manager, output->resource);
+	output->advertised = true;
+
+	/*
+	 * Tell the manager which wl_output this is, so it can correlate with
+	 * anything it learns from the registry. Only possible once the client has
+	 * actually seen that global.
+	 */
+	if (swc_screen_get_wl_output_name(output->swc, client, &name)) {
+		river_output_v1_send_wl_output(output->resource, name);
+	}
+
+	send_output_geometry(output);
 }
 
 /* ---------------------------------------------------------------- window */
@@ -491,9 +584,15 @@ static void
 begin_manage(void)
 {
 	struct river_window *window;
+	struct river_output *output;
 
 	if (!wm.manager || wm.phase != PHASE_IDLE) {
 		return;
+	}
+
+	/* Outputs first: a manager needs somewhere to put the windows. */
+	wl_list_for_each (output, &wm.outputs, link) {
+		advertise_output(output);
 	}
 
 	wl_list_for_each (window, &wm.windows, link) {
@@ -706,6 +805,7 @@ static void
 manager_resource_destroy(struct wl_resource *resource)
 {
 	struct river_window *window;
+	struct river_output *output;
 
 	if (wm.manager != resource) {
 		return;
@@ -714,11 +814,16 @@ manager_resource_destroy(struct wl_resource *resource)
 	wm.manager = NULL;
 	wm.phase = PHASE_IDLE;
 
-	/* The window objects belonged to that client; they are gone with it. */
+	/* Those objects belonged to that client; they went with it. A new manager
+	 * will be told about everything again. */
 	wl_list_for_each (window, &wm.windows, link) {
 		window->resource = NULL;
 		window->node = NULL;
 		window->advertised = false;
+	}
+	wl_list_for_each (output, &wm.outputs, link) {
+		output->resource = NULL;
+		output->advertised = false;
 	}
 }
 
@@ -762,19 +867,63 @@ river_wm_create(struct wl_display *display)
 	wm.display = display;
 	wm.phase = PHASE_IDLE;
 	wl_list_init(&wm.windows);
+	wl_list_init(&wm.outputs);
 
 	wm.global = wl_global_create(display, &river_window_manager_v1_interface,
 	                             5, NULL, bind_manager);
 	return wm.global != NULL;
 }
 
+static void
+handle_screen_destroy(void *data)
+{
+	struct river_output *output = data;
+
+	if (output->resource) {
+		river_output_v1_send_removed(output->resource);
+	}
+	if (wm.screen == output->swc) {
+		wm.screen = NULL;
+	}
+	wl_list_remove(&output->link);
+	free(output);
+	schedule_sequence();
+}
+
+static void
+handle_screen_geometry(void *data)
+{
+	struct river_output *output = data;
+
+	send_output_geometry(output);
+	schedule_sequence();
+}
+
+static const struct swc_screen_handler screen_handler = {
+    .destroy = handle_screen_destroy,
+    .geometry_changed = handle_screen_geometry,
+    .usable_geometry_changed = handle_screen_geometry,
+};
+
 void
 river_wm_add_screen(struct swc_screen *screen)
 {
-	/* Single screen for now; river_output_v1 is not implemented yet. */
+	struct river_output *output;
+
+	output = calloc(1, sizeof(*output));
+	if (!output) {
+		return;
+	}
+
+	output->swc = screen;
+	wl_list_insert(wm.outputs.prev, &output->link);
+	swc_screen_set_handler(screen, &screen_handler, output);
+
+	/* Windows are placed on this one until multi-output placement exists. */
 	if (!wm.screen) {
 		wm.screen = screen;
 	}
+
 	schedule_sequence();
 }
 
