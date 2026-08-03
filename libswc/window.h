@@ -26,6 +26,7 @@
 
 #include "pointer.h"
 #include "swc.h"
+#include "transaction.h"
 
 #include <stdint.h>
 #include <wayland-server.h>
@@ -81,7 +82,17 @@ struct window {
 	struct {
 		bool pending, acknowledged;
 		uint32_t width, height;
+		/*
+		 * Identifies the most recent configure this window was asked to
+		 * make. Owned by window.c and independent of any shell's own
+		 * serial, so all three window_impls can share one ack path.
+		 */
+		uint32_t serial;
 	} configure;
+
+	/* Non-NULL while enrolled in an open cohort; see window_transaction_begin. */
+	struct transaction *transaction;
+	struct wl_list transaction_link;
 };
 
 struct window_impl {
@@ -92,6 +103,45 @@ struct window_impl {
 	void (*close)(struct window *window);
 	void (*set_mode)(struct window *window, enum window_mode mode);
 };
+
+/*
+ * Cohort configures.
+ *
+ * Outside a transaction, windows behave exactly as they always have: each
+ * window's pending move is applied the moment its own buffer arrives. That
+ * keeps existing swc compositors working unchanged.
+ *
+ * Between window_transaction_begin() and window_transaction_commit(), any
+ * window reconfigured through swc_window_set_size()/set_position() is enrolled
+ * in the open cohort instead, and nothing is applied until the cohort
+ * completes. This is river-window-management-v1 step 3: send new state to
+ * every window, then wait for the responses.
+ *
+ * Windows that did not respond before the timeout keep their pending state and
+ * fall back to the per-window path, which is the protocol's "the server will
+ * send the dimensions event in a future render sequence".
+ */
+struct window_transaction_handler {
+	void (*done)(bool timed_out, void *data);
+};
+
+/* Returns false if a transaction is already open or on allocation failure. */
+bool
+window_transaction_begin(void);
+void
+window_transaction_commit(const struct window_transaction_handler *handler,
+                          void *data, uint32_t timeout_ms);
+bool
+window_transaction_active(void);
+
+/*
+ * Record that a window has acknowledged its current configure. Shells with a
+ * real round trip (xdg-shell) call this from their ack handler; shells without
+ * one set configure.acknowledged inside their own configure() and are enrolled
+ * as already-acked.
+ */
+void
+window_ack_configure(struct window *window);
 
 extern struct wl_listener window_enter_listener;
 

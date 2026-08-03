@@ -42,6 +42,16 @@ static const uint32_t def_motion_throttle_ms = 16;
 
 static const struct swc_window_handler null_handler;
 
+/*
+ * The single open cohort, if any. There is one because the protocol has one
+ * manage sequence in flight at a time; a second begin() while one is open is a
+ * caller bug rather than something to queue.
+ */
+static struct transaction *window_transaction;
+static struct wl_list transaction_windows;
+static const struct window_transaction_handler *transaction_handler;
+static void *transaction_handler_data;
+
 static bool
 should_throttle_motion(uint32_t throttle_ms, uint32_t *last_time, uint32_t time)
 {
@@ -178,6 +188,144 @@ flush(struct window *window)
 	}
 }
 
+/*
+ * Withdraw a window from the open cohort. Unlinking before notifying the
+ * barrier matters: transaction_remove() can complete the cohort, and the
+ * completion handler walks this same list.
+ */
+static void
+leave_transaction(struct window *window)
+{
+	struct transaction *transaction = window->transaction;
+
+	if (!transaction) {
+		return;
+	}
+
+	window->transaction = NULL;
+	wl_list_remove(&window->transaction_link);
+	wl_list_init(&window->transaction_link);
+	transaction_remove(transaction, window);
+}
+
+/*
+ * Enrol a window in the open cohort. `awaiting_ack` says whether this window
+ * owes a response: false means it is enrolled purely so its move lands with
+ * everyone else's, and it settles immediately rather than holding the barrier.
+ *
+ * Deciding this at the call site rather than inferring it here is deliberate.
+ * configure.pending is only ever set for tiled windows, so it cannot be used
+ * to tell "no round trip needed" from "stacked window mid-configure".
+ */
+static void
+join_transaction(struct window *window, bool awaiting_ack)
+{
+	if (!window_transaction || window->transaction) {
+		return;
+	}
+
+	if (!transaction_add(window_transaction, window, window->configure.serial)) {
+		return;
+	}
+
+	window->transaction = window_transaction;
+	wl_list_insert(&transaction_windows, &window->transaction_link);
+
+	if (!awaiting_ack) {
+		transaction_ack(window_transaction, window, window->configure.serial);
+	}
+}
+
+static void
+transaction_done(struct transaction *transaction, bool timed_out, void *data)
+{
+	struct window *window, *tmp;
+
+	(void)data;
+
+	wl_list_for_each_safe (window, tmp, &transaction_windows,
+	                       transaction_link) {
+		bool acked = transaction_acked(transaction, window);
+
+		wl_list_remove(&window->transaction_link);
+		wl_list_init(&window->transaction_link);
+		window->transaction = NULL;
+
+		if (!acked) {
+			/*
+			 * A straggler. Leave move.pending and configure.pending set so
+			 * the per-window path picks it up when its buffer finally
+			 * arrives -- the protocol expects its dimensions in a later
+			 * render sequence, not never.
+			 */
+			continue;
+		}
+
+		flush(window);
+		window->configure.pending = false;
+	}
+
+	window_transaction = NULL;
+	transaction_destroy(transaction);
+
+	if (transaction_handler && transaction_handler->done) {
+		transaction_handler->done(timed_out, transaction_handler_data);
+	}
+	transaction_handler = NULL;
+	transaction_handler_data = NULL;
+}
+
+static const struct transaction_handler barrier_handler = {
+    .complete = transaction_done,
+};
+
+bool
+window_transaction_begin(void)
+{
+	if (window_transaction) {
+		return false;
+	}
+
+	window_transaction =
+	    transaction_create(swc.event_loop, &barrier_handler, NULL);
+	if (!window_transaction) {
+		return false;
+	}
+
+	wl_list_init(&transaction_windows);
+	return true;
+}
+
+void
+window_transaction_commit(const struct window_transaction_handler *handler,
+                          void *data, uint32_t timeout_ms)
+{
+	if (!window_transaction) {
+		return;
+	}
+
+	transaction_handler = handler;
+	transaction_handler_data = data;
+	/* May complete, and tear everything down, before this returns. */
+	transaction_commit(window_transaction, timeout_ms);
+}
+
+bool
+window_transaction_active(void)
+{
+	return window_transaction != NULL;
+}
+
+void
+window_ack_configure(struct window *window)
+{
+	window->configure.acknowledged = true;
+
+	if (window->transaction) {
+		transaction_ack(window->transaction, window, window->configure.serial);
+	}
+}
+
 EXPORT void
 swc_window_set_handler(struct swc_window *base,
                        const struct swc_window_handler *handler, void *data)
@@ -239,7 +387,14 @@ swc_window_set_stacked(struct swc_window *base)
 {
 	struct window *window = INTERNAL(base);
 
-	flush(window);
+	/*
+	 * Leave the flush to the cohort if this window is enrolled. Applying it
+	 * here would let a mode change jump the barrier while the window's
+	 * neighbours are still waiting.
+	 */
+	if (!window->transaction) {
+		flush(window);
+	}
 	window->configure.pending = false;
 	window->configure.width = 0;
 	window->configure.height = 0;
@@ -302,6 +457,17 @@ swc_window_set_position(struct swc_window *base, int32_t x, int32_t y)
 	window->move.y = y;
 	window->move.pending = true;
 
+	/*
+	 * Inside a cohort the move is held until every member has responded,
+	 * even when this window has no configure outstanding -- a pure
+	 * reposition must still land in the same frame as its neighbours.
+	 */
+	if (window_transaction) {
+		join_transaction(window, window->configure.pending &&
+		                             !window->configure.acknowledged);
+		return;
+	}
+
 	/* If we don't have a configure pending, perform the move now. */
 	if (!window->configure.pending) {
 		flush(window);
@@ -323,12 +489,27 @@ swc_window_set_size(struct swc_window *base, uint32_t width, uint32_t height)
 		return;
 	}
 
+	/*
+	 * Bump before dispatching: shells that acknowledge synchronously do so
+	 * from inside configure(), and must settle against the new serial.
+	 */
+	++window->configure.serial;
+	window->configure.acknowledged = false;
 	window->impl->configure(window, width, height);
 
 	if (window->mode == WINDOW_MODE_TILED) {
 		window->configure.width = width;
 		window->configure.height = height;
 		window->configure.pending = true;
+	}
+
+	/*
+	 * wl_shell and Xwayland acknowledge inside configure(), so by now the
+	 * response has already happened and the window settles on enrolment.
+	 * xdg-shell leaves it outstanding and the cohort waits.
+	 */
+	if (window_transaction) {
+		join_transaction(window, !window->configure.acknowledged);
 	}
 }
 
@@ -471,6 +652,15 @@ handle_attach(struct view_handler *handler)
 {
 	struct window *window = wl_container_of(handler, window, view_handler);
 
+	/*
+	 * Enrolled windows are flushed by the cohort, not by their own buffer
+	 * arriving. Applying here would defeat the barrier: it is exactly the
+	 * piecewise behaviour the cohort exists to replace.
+	 */
+	if (window->transaction) {
+		return;
+	}
+
 	if (window->configure.acknowledged) {
 		flush(window);
 	}
@@ -544,8 +734,12 @@ window_initialize(struct window *window, const struct window_impl *impl,
 	    .button = handle_button,
 	};
 	window->configure.pending = false;
+	window->configure.acknowledged = false;
 	window->configure.width = 0;
 	window->configure.height = 0;
+	window->configure.serial = 0;
+	window->transaction = NULL;
+	wl_list_init(&window->transaction_link);
 	window->resize.interaction.active = false;
 	window->resize.interaction.handler = (struct pointer_handler){
 	    .motion = resize_motion,
@@ -563,6 +757,11 @@ window_finalize(struct window *window)
 {
 	DEBUG("Finalizing window, %p\n", window);
 
+	/*
+	 * A window closing mid-cohort must withdraw, or the barrier waits on an
+	 * ack that can never arrive and stalls every other window until timeout.
+	 */
+	leave_transaction(window);
 	window_unmanage(window);
 	compositor_view_destroy(window->view);
 	free(window->base.title);

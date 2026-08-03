@@ -668,7 +668,7 @@ ack_configure(struct wl_client *client, struct wl_resource *resource,
 	}
 	window = wl_resource_get_user_data(xdg_surface->role);
 	if (window && serial == xdg_surface->configure_serial) {
-		window->configure.acknowledged = true;
+		window_ack_configure(window);
 	}
 }
 
