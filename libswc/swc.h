@@ -970,6 +970,43 @@ swc_remove_keyboard_observer(const struct swc_keyboard_observer *observer,
                              void *data);
 
 /**
+ * Observe pointer button events, without claiming them.
+ *
+ * The keyboard equivalent exists so a compositor can do its own key matching.
+ * This one answers a narrower question: "which window did the user just act
+ * on". A window manager needs that to decide focus, and swc_add_binding() is
+ * the wrong tool for it -- a binding on an unmodified left click would consume
+ * the press, so the application under the pointer would never see its own
+ * click.
+ *
+ * `window` is the window the pointer is over, or NULL if it is over no window
+ * (the background, a layer surface, or a shell surface). A press on a
+ * subsurface reports the toplevel it belongs to, which is what makes a click on
+ * a client-side titlebar or a video pane count as acting on the window.
+ *
+ * Unlike a keyboard observer this cannot consume the event, hence the void
+ * return. An observer that could eat button presses would be a way to make a
+ * client silently uninteractable, and nothing needs it: a compositor that
+ * *does* want a click to itself registers it with swc_add_binding().
+ *
+ * Because it cannot consume, it runs *before* bindings -- again unlike the
+ * keyboard, where observers run last so they cannot swallow a VT switch. A
+ * press claimed by a binding is still reported here, which is what makes
+ * dragging a window by a bound modifier+click count as acting on it.
+ */
+struct swc_pointer_observer {
+	void (*button)(void *data, uint32_t time, uint32_t button, uint32_t state,
+	               struct swc_window *window);
+};
+
+int
+swc_add_pointer_observer(const struct swc_pointer_observer *observer,
+                         void *data);
+void
+swc_remove_pointer_observer(const struct swc_pointer_observer *observer,
+                            void *data);
+
+/**
  * Keyboard state, for compositors doing their own key matching.
  *
  * Deliberately narrow: these hand back plain integers rather than exposing

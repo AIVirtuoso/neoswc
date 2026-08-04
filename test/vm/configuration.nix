@@ -444,6 +444,32 @@ in
       touch /tmp/neoswc-vm-share/mark-capture
       wait_host capture
 
+      # Click-to-focus. river_seat_v1.window_interaction is the only thing a
+      # manager gets to tell it a window was acted on rather than merely hovered
+      # -- rill ignores pointer_enter entirely -- so without it clicking a
+      # window does nothing and focus can only move by keybinding.
+      #
+      # The host injects the click at go-click, because the guest cannot: QEMU's
+      # human-monitor mouse_move sends relative deltas the absolute usb-tablet
+      # discards. QMP input-send-event with abs axes is the only path that
+      # moves the guest cursor. See CLAUDE.md for the exact commands.
+      #
+      # The test client tiles full-width rows top to bottom, so with two windows
+      # (640, 200) is inside window 0 and (640, 600) inside window 1. The host
+      # clicks both, in that order. Reporting the index is the point: an event
+      # naming the wrong window would focus the wrong window, which no count of
+      # events would catch.
+      #
+      # Moving between the two also gives the first pointer_leave this project
+      # has ever produced -- the pointer had no way to leave a window while the
+      # only motion available was the human monitor's, which does nothing.
+      say "MARK click"
+      touch /tmp/neoswc-vm-share/mark-click
+      wait_host click
+      sleep 1
+      say "interactions: $(grep -c 'INTERACTION' /tmp/wmclient.log 2>/dev/null || true)"
+      say "interaction log: $(grep '^wmclient: INTERACTION' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
+
       # Straggler path. Wedge a client with SIGSTOP so it cannot acknowledge,
       # then force a relayout by adding another window. The cohort must give up
       # on it and show everyone else rather than blocking -- the barrier's
@@ -551,7 +577,10 @@ in
       say "bindings registered: $(grep -cE '^neoswc: (key binding enabled|pointer binding registered)' /tmp/neoswc.log 2>/dev/null || true)"
       say "bindings fired: $(grep -c 'binding 0x.* fired' /tmp/neoswc.log 2>/dev/null || true)"
       say "binding fire log: $(grep 'fired' /tmp/neoswc.log 2>/dev/null | tail -8 | tr '\n' '|')"
-      say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || true) press(es)"
+      # Anchored: an unanchored 'BINDING pressed' also matches PBINDING, so the
+      # key-binding count silently included pointer bindings and read 1 with no
+      # key ever injected.
+      say "binding events: $(grep -c '^wmclient: BINDING pressed' /tmp/wmclient.log 2>/dev/null || true) press(es)"
       say "binding log: $(grep '^wmclient: BINDING' /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
       say "wev1 log: $(tail -c 400 /tmp/wev1.log 2>/dev/null | tr '\n' ';')"
       say "focus enter: wev1=$(grep -c '] enter' /tmp/wev1.log 2>/dev/null || true) wev2=$(grep -c '] enter' /tmp/wev2.log 2>/dev/null || true)"

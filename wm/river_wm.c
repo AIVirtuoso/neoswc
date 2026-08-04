@@ -566,12 +566,20 @@ enum binding_event_kind {
 	BINDING_EVENT_STOP_REPEAT,
 	BINDING_EVENT_ATE_UNBOUND,
 	BINDING_EVENT_MODIFIERS,
+	/*
+	 * Not a binding, but the same rule: window_interaction is spec'd "This
+	 * event will be followed by a manage_start event after all other new
+	 * state has been sent by the server", so it rides the same queue rather
+	 * than growing a second one with identical semantics.
+	 */
+	BINDING_EVENT_WINDOW_INTERACTION,
 };
 
 struct binding_event {
 	struct wl_list link;
 	enum binding_event_kind kind;
 	struct river_binding *binding; /* NULL for seat-wide events */
+	struct river_window *window;   /* BINDING_EVENT_WINDOW_INTERACTION */
 	uint32_t state;
 	uint32_t previous, current; /* BINDING_EVENT_MODIFIERS */
 };
@@ -658,6 +666,22 @@ queue_binding_event(enum binding_event_kind kind, struct river_binding *binding,
 	schedule_sequence();
 }
 
+/* Same queue, same reason -- see BINDING_EVENT_WINDOW_INTERACTION. */
+static void
+queue_window_interaction(struct river_window *window)
+{
+	struct binding_event *event;
+
+	if (!(event = calloc(1, sizeof(*event)))) {
+		return;
+	}
+	event->kind = BINDING_EVENT_WINDOW_INTERACTION;
+	event->window = window;
+	wl_list_insert(pending_binding_events.prev, &event->link);
+
+	schedule_sequence();
+}
+
 /* Pointer bindings only; key bindings are matched in binding_observe_key(). */
 static void
 binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
@@ -728,6 +752,12 @@ flush_binding_events(void)
 				    wm.xkb_seat, event->previous, event->current);
 			}
 			break;
+		case BINDING_EVENT_WINDOW_INTERACTION:
+			if (wm.seat && event->window && event->window->resource) {
+				river_seat_v1_send_window_interaction(wm.seat,
+				                                      event->window->resource);
+			}
+			break;
 		}
 
 		wl_list_remove(&event->link);
@@ -743,6 +773,21 @@ drop_binding_events(struct river_binding *binding)
 
 	wl_list_for_each_safe (event, tmp, &pending_binding_events, link) {
 		if (event->binding == binding) {
+			wl_list_remove(&event->link);
+			free(event);
+		}
+	}
+}
+
+/* Likewise a window: a queued interaction outliving its river_window would be
+ * a use-after-free at the next flush. */
+static void
+drop_window_events(struct river_window *window)
+{
+	struct binding_event *event, *tmp;
+
+	wl_list_for_each_safe (event, tmp, &pending_binding_events, link) {
+		if (event->window == window) {
 			wl_list_remove(&event->link);
 			free(event);
 		}
@@ -946,6 +991,71 @@ ensure_keyboard_observer(void)
 		fprintf(stderr,
 		        "neoswc: could not observe the keyboard (%d); key bindings "
 		        "will not fire\n",
+		        ret);
+	}
+}
+
+/*
+ * window_interaction: "A window has been interacted with beyond the pointer
+ * merely passing over it."
+ *
+ * This is how a manager decides to move keyboard focus on a click. rill does
+ * nothing else with focus -- its seat listener acts on window_interaction and
+ * ignores pointer_enter entirely -- so without this, clicking a window simply
+ * does not focus it and the only way to change focus is a keybinding.
+ *
+ * Press only. The spec wants "interacted with", and sending it again on release
+ * would ask the manager to make the same decision twice.
+ *
+ * Not a pointer binding: swc_add_binding() on an unmodified left click would
+ * consume the press, so the application would never see its own click. Hence
+ * the non-consuming observer in swc.
+ */
+static void
+seat_observe_button(void *data, uint32_t time, uint32_t button, uint32_t state,
+                    struct swc_window *swc)
+{
+	struct river_window *window;
+
+	(void)data;
+	(void)time;
+	(void)button;
+
+	if (!state || !swc || !wm.seat) {
+		return;
+	}
+
+	wl_list_for_each (window, &wm.windows, link) {
+		if (window->swc == swc) {
+			if (window->resource) {
+				queue_window_interaction(window);
+			}
+			return;
+		}
+	}
+}
+
+static const struct swc_pointer_observer pointer_observer = {
+    .button = seat_observe_button,
+};
+
+/* Installed with the seat, for the same reason the keyboard observer is
+ * installed lazily: river_wm_create() runs before swc_initialize(). */
+static void
+ensure_pointer_observer(void)
+{
+	static bool installed;
+	int ret;
+
+	if (installed) {
+		return;
+	}
+	ret = swc_add_pointer_observer(&pointer_observer, NULL);
+	installed = ret == 0;
+	if (!installed) {
+		fprintf(stderr,
+		        "neoswc: could not observe the pointer (%d); clicking a "
+		        "window will not focus it\n",
 		        ret);
 	}
 }
@@ -1482,6 +1592,8 @@ advertise_seat(void)
 	if (swc_get_wl_seat_name(client, &name)) {
 		river_seat_v1_send_wl_seat(wm.seat, name);
 	}
+
+	ensure_pointer_observer();
 }
 
 /* ---------------------------------------------------------------- window */
@@ -2297,6 +2409,7 @@ maybe_free_window(struct river_window *window)
 	if (window->swc || window->resource || window->node) {
 		return;
 	}
+	drop_window_events(window);
 	free(window);
 }
 
@@ -2346,10 +2459,9 @@ handle_window_entered(void *data)
 	struct river_window *window = data;
 
 	/*
-	 * swc reports the pointer entering a window but has no matching "left",
-	 * so pointer_leave is never sent. A manager using pointer_enter for
-	 * focus-follows-mouse still works; one that tracks enter/leave pairs will
-	 * not. Needs a leave callback in swc (Tier 2).
+	 * Hover only. A manager doing focus-follows-mouse acts on this; one doing
+	 * click-to-focus wants window_interaction instead, which is a separate
+	 * event on the same seat -- rill uses only the latter.
 	 */
 	if (wm.seat && window->resource) {
 		river_seat_v1_send_pointer_enter(wm.seat, window->resource);

@@ -2,6 +2,13 @@
  *
  * Copyright (c) 2013-2020 Michael Forney
  *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -32,9 +39,12 @@
 #include "shm.h"
 #include "surface.h"
 #include "util.h"
+#include "window.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wld/wld.h>
 
@@ -482,6 +492,133 @@ client_handle_frame(struct pointer_handler *handler)
 		}
 	}
 	pointer->client_axis_source = -1;
+}
+
+/* --------------------------------------------------------------- observers */
+
+/*
+ * swc_add_pointer_observer(). One internal pointer_handler fans out to however
+ * many observers a compositor registers, for the same reason as the keyboard's:
+ * pointer_handler identifies an implementation by its function pointers and
+ * carries no user data, so it cannot itself hold a list.
+ */
+struct pointer_observer {
+	const struct swc_pointer_observer *impl;
+	void *data;
+	struct wl_list link;
+};
+
+static struct wl_list pointer_observers;
+static bool pointer_observers_initialized;
+
+/*
+ * The window a press lands on.
+ *
+ * A subsurface has its own view and no window of its own, so a click on a
+ * client-side titlebar or a video pane has to resolve to the toplevel that owns
+ * it. The walk stops at the first view that is not a subsurface: child
+ * toplevels and xdg popups also set parent, and each of those is its own
+ * window.
+ */
+static struct swc_window *
+button_window(struct pointer *pointer)
+{
+	struct compositor_view *view;
+
+	for (view = pointer->focus.view; view; view = view->parent) {
+		if (view->window) {
+			return &view->window->base;
+		}
+		if (!view->surface || !view->surface->subsurface) {
+			break;
+		}
+	}
+
+	return NULL;
+}
+
+static bool
+observer_handle_button(struct pointer_handler *handler, uint32_t time,
+                       struct button *button, uint32_t state)
+{
+	struct pointer_observer *observer, *tmp;
+	struct swc_window *window;
+
+	(void)handler;
+
+	window = button_window(swc.seat->pointer);
+
+	/* _safe: an observer is allowed to remove itself from its own callback. */
+	wl_list_for_each_safe (observer, tmp, &pointer_observers, link) {
+		if (observer->impl->button) {
+			observer->impl->button(observer->data, time, button->press.value,
+			                       state, window);
+		}
+	}
+
+	/* Never consumes -- see the note on struct swc_pointer_observer. */
+	return false;
+}
+
+static struct pointer_handler observer_handler = {
+    .button = observer_handle_button,
+};
+
+EXPORT int
+swc_add_pointer_observer(const struct swc_pointer_observer *impl, void *data)
+{
+	struct pointer_observer *observer;
+	struct pointer *pointer;
+
+	if (!impl || !swc.seat || !(pointer = swc.seat->pointer)) {
+		return -EINVAL;
+	}
+	if (!(observer = malloc(sizeof(*observer)))) {
+		return -ENOMEM;
+	}
+	observer->impl = impl;
+	observer->data = data;
+
+	if (!pointer_observers_initialized) {
+		wl_list_init(&pointer_observers);
+		pointer_observers_initialized = true;
+		/*
+		 * At the head, so an observer sees every press -- including ones a
+		 * binding goes on to claim.
+		 *
+		 * This is the opposite of the keyboard, where observers deliberately
+		 * run last. That order exists because a keyboard observer *can*
+		 * consume, and one that swallowed a VT switch would strand the user.
+		 * A pointer observer cannot consume anything, so its position cannot
+		 * take an event away from anyone; all it decides is how much the
+		 * observer gets to see. Running last would hide exactly the presses
+		 * that matter most: dragging a window by its bound modifier+click
+		 * should still count as acting on that window.
+		 */
+		wl_list_insert(&pointer->handlers, &observer_handler.link);
+	}
+
+	wl_list_insert(pointer_observers.prev, &observer->link);
+
+	return 0;
+}
+
+EXPORT void
+swc_remove_pointer_observer(const struct swc_pointer_observer *impl, void *data)
+{
+	struct pointer_observer *observer, *tmp;
+
+	if (!pointer_observers_initialized) {
+		return;
+	}
+
+	wl_list_for_each_safe (observer, tmp, &pointer_observers, link) {
+		if (observer->impl == impl && observer->data == data) {
+			wl_list_remove(&observer->link);
+			free(observer);
+			return;
+		}
+	}
 }
 
 bool

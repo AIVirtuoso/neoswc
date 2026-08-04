@@ -461,13 +461,28 @@ seat_none(void *data, struct river_seat_v1 *proxy)
 	(void)proxy;
 }
 
+/*
+ * window_interaction. Reported with the window's index, because the point of
+ * the event is *which* window was clicked -- a manager uses it to move focus,
+ * so an event naming the wrong window is as broken as no event at all.
+ */
 static void
 seat_window(void *data, struct river_seat_v1 *proxy,
             struct river_window_v1 *window)
 {
+	unsigned i;
+
 	(void)data;
 	(void)proxy;
-	(void)window;
+
+	for (i = 0; i < num_windows; ++i) {
+		if (windows[i].proxy == window) {
+			say("INTERACTION window %u", i);
+			return;
+		}
+	}
+
+	say("INTERACTION window unknown");
 }
 
 static void
