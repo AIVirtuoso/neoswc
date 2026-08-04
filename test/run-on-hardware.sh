@@ -24,6 +24,17 @@
 #          input path rather than anything protocol-related.
 #   river  neoswc serving the river protocols, with rill as the manager.
 #          Override the manager with RIVER_WM=/path/to/wm.
+#
+# Environment:
+#   PORTAL=0   skip the xdg-desktop-portal setup. Screenshots (grim, slurp,
+#              satty) do not need it -- they are ordinary Wayland clients.
+#              Screen sharing (OBS) does.
+#
+# WARNING, screen sharing only: the portal and PipeWire are *user* services,
+# one instance per login, not per VT. Pointing them at this compositor
+# repoints them away from whatever session is running on another VT -- screen
+# sharing there will break until you switch back and restart them, or log out
+# and in. Log out of the other session first if that matters, or use PORTAL=0.
 set -u
 
 MODE="${1:-wm}"
@@ -149,6 +160,73 @@ echo "sockets already present: ${PRE_SOCKS:-none}" >> "$LOG"
 					echo "heads after kanshi:" >> "$LOG"
 					wlr-randr >> "$LOG" 2>&1 || true
 				fi
+				# Screen sharing needs more than the compositor. OBS does not
+				# talk Wayland: it asks xdg-desktop-portal for a ScreenCast
+				# session and receives frames over PipeWire. The portal picks
+				# its backend from XDG_CURRENT_DESKTOP, which is unset on a
+				# bare VT, so none of that happens by itself.
+				#
+				# XDG_CURRENT_DESKTOP=river, not neoswc: /etc/nixos maps river
+				# to the wlr backend (xdg.portal.config.river.default =
+				# ["wlr" "gtk"]), and "neoswc" is a name no portal config knows,
+				# which lands on whatever the default backend is -- under this
+				# session that is the GNOME one, which does not speak
+				# ext-image-copy-capture.
+				#
+				# Set PORTAL=0 to skip: this restarts user services shared with
+				# whatever session is on another VT. See the warning below.
+				if [ "${PORTAL:-1}" != 0 ]; then
+					export XDG_CURRENT_DESKTOP=river
+					export XDG_SESSION_TYPE=wayland
+
+					systemctl --user import-environment \
+						WAYLAND_DISPLAY XDG_RUNTIME_DIR \
+						XDG_CURRENT_DESKTOP XDG_SESSION_TYPE >> "$LOG" 2>&1 || true
+					if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+						dbus-update-activation-environment --systemd \
+							WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
+							>> "$LOG" 2>&1 || true
+					fi
+
+					# Restart, not start. If a session on another VT already has
+					# these running they are pointed at *that* compositor's
+					# socket, and OBS would be handed the wrong screen or none.
+					systemctl --user restart xdg-desktop-portal-wlr.service \
+						>> "$LOG" 2>&1 || true
+					systemctl --user restart xdg-desktop-portal.service \
+						>> "$LOG" 2>&1 || true
+					sleep 2
+
+					{
+						echo "=== screen sharing ==="
+						echo "XDG_CURRENT_DESKTOP=$XDG_CURRENT_DESKTOP"
+						echo "portal backends running:"
+						systemctl --user list-units --type=service --no-legend \
+							2>/dev/null | grep -i portal || echo "  none"
+						echo "pipewire: $(systemctl --user is-active pipewire.service 2>&1)"
+						echo "wireplumber: $(systemctl --user is-active wireplumber.service 2>&1)"
+					} >> "$LOG" 2>&1
+				else
+					echo "PORTAL=0; screen sharing not set up" >> "$LOG"
+				fi
+
+				# The screenshot pipeline needs no portal at all -- grim and
+				# slurp are ordinary Wayland clients. Report whether they are
+				# even present, so a missing tool is not mistaken for a
+				# compositor fault.
+				{
+					echo "=== screenshot tools ==="
+					for t in grim slurp satty wl-copy; do
+						printf '%-8s %s\n' "$t" "$(command -v $t || echo MISSING)"
+					done
+					if command -v grim >/dev/null 2>&1; then
+						if grim /tmp/neoswc-hw-shot.png >> "$LOG" 2>&1; then
+							echo "grim: $(stat -c %s /tmp/neoswc-hw-shot.png) bytes -> /tmp/neoswc-hw-shot.png"
+						else
+							echo "grim FAILED"
+						fi
+					fi
+				} >> "$LOG" 2>&1
 			else
 				echo "kanshi not found; screens keep swc's enumeration order" >> "$LOG"
 			fi
