@@ -131,6 +131,8 @@ in
       pkgs.iproute2
       pkgs.gdb
       pkgs.wev
+      pkgs.wlr-randr
+      pkgs.wayland-utils
       pkgs.swaybg
     ];
     script = ''
@@ -294,6 +296,19 @@ in
         say "manager spawn: $(grep -E '^neoswc: (spawned|failed to exec|manager)' /tmp/neoswc.log 2>/dev/null | tr '\n' '|')"
         say "wm client: $(head -4 /tmp/wmclient.log 2>/dev/null | tr '\n' '|')"
         say "wm client alive: $(pgrep -fc "$CLIENT" 2>/dev/null || true)"
+      fi
+
+      # Output management: is the global there, and does moving a head actually
+      # take effect? The guest has one screen, so this cannot check a two-monitor
+      # arrangement -- it checks that kanshi has something to talk to and that an
+      # applied configuration reaches swc_screen_set_position().
+      say "output mgmt global: $(wayland-info 2>/dev/null | grep -c zwlr_output_manager_v1 || true)"
+      if command -v wlr-randr >/dev/null 2>&1; then
+        say "wlr-randr before: $(wlr-randr 2>&1 | tr '\n' '|' | head -c 300)"
+        wlr-randr --output Virtual-1 --pos 300,150 > /tmp/wlrrandr.log 2>&1 || true
+        sleep 1
+        say "wlr-randr apply: $(cat /tmp/wlrrandr.log | tr '\n' '|' | head -c 200)"
+        say "wlr-randr after: $(wlr-randr 2>&1 | grep -i position | tr '\n' '|' | head -c 200)"
       fi
 
       # A solid-colour background layer surface. The compositor clears to black,

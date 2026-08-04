@@ -32,6 +32,7 @@
 #include "keyboard.h"
 #include "launch.h"
 #include "layer_shell.h"
+#include "output_management.h"
 #include "panel_manager.h"
 #include "pointer.h"
 #include "screen.h"
@@ -277,6 +278,14 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 	}
 #endif
 
+	/* After screens_initialize(): heads are advertised from swc.screens, so
+	 * binding before the screens exist would show a client an empty layout. */
+	swc.output_management = output_management_create(display);
+	if (!swc.output_management) {
+		ERROR("Could not initialize output management\n");
+		goto error_output_management;
+	}
+
 	swc.select_manager = select_manager_create(display);
 	if (!swc.select_manager) {
 		ERROR("Could not initialize select manager\n");
@@ -289,6 +298,8 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 
 error17:
 	wl_global_destroy(swc.select_manager);
+error_output_management:
+	wl_global_destroy(swc.output_management);
 #ifdef ENABLE_XWAYLAND
 error16:
 #endif
@@ -336,6 +347,7 @@ swc_finalize(void)
 	xserver_finalize();
 #endif
 	wl_global_destroy(swc.xdg_output_manager);
+	wl_global_destroy(swc.output_management);
 	wl_global_destroy(swc.snap_manager);
 	wl_global_destroy(swc.select_manager);
 	wl_global_destroy(swc.panel_manager);

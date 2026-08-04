@@ -35,6 +35,7 @@
 #include "internal.h"
 #include "mode.h"
 #include "output.h"
+#include "output_management.h"
 #include "plane.h"
 #include "pointer.h"
 #include "util.h"
@@ -233,6 +234,11 @@ swc_screen_set_position(struct swc_screen *base, int32_t x, int32_t y)
 	/* A view's screen mask comes from intersection, so moving the screen out
 	 * from under it changes which screens it is on. */
 	compositor_update_screens();
+
+	/* Bump the output-management serial, so a client holding a configuration
+	 * built against the old layout is told it is stale rather than having it
+	 * silently applied on top. */
+	output_management_update();
 }
 
 void

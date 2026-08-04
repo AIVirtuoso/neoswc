@@ -8,6 +8,10 @@ foreach proto : [
   'swc_snap.xml',
   'swc_select.xml',
   'wlr-layer-shell-unstable-v1.xml',
+  # Vendored from wlr-protocols (MIT-style, Purism SPC). The only protocol
+  # kanshi and wlr-randr speak; wayland-protocols has no output-management
+  # equivalent, staging or otherwise. Our implementation of it is GPL.
+  'wlr-output-management-unstable-v1.xml',
   'wayland-drm.xml',
   # Vendored from river (MIT); the implementation of it is ours and GPL.
   'river-window-management-v1.xml',
