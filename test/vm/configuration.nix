@@ -85,6 +85,10 @@ in
     fuzzel-dbg
     pkgs.libdrm # modetest
     pkgs.wayland-utils
+    # A background layer surface, so the area behind a window is not the
+    # compositor's black clear colour. Without one, anything the compositor
+    # fails to paint is invisible against a black screen.
+    pkgs.swaybg
   ];
 
   # swc-launch opens DRM devices and manages the VT, so it must be setuid.
@@ -127,6 +131,7 @@ in
       pkgs.iproute2
       pkgs.gdb
       pkgs.wev
+      pkgs.swaybg
     ];
     script = ''
       OUT=/tmp/neoswc-vm-share/smoke.log
@@ -161,6 +166,15 @@ in
         mkdir -p /root/.config/rill
         cp /tmp/neoswc-vm-share/rill-config /root/.config/rill/config.zon
         say "installed rill config ($(wc -l < /root/.config/rill/config.zon) lines)"
+      fi
+
+      # fuzzel's own config decides whether its background is translucent, which
+      # is the difference between "the compositor cannot blend" and "the client
+      # asked for an opaque window". Take the host's when one is provided.
+      if [ -s /tmp/neoswc-vm-share/fuzzel-config ]; then
+        mkdir -p /root/.config/fuzzel
+        cp /tmp/neoswc-vm-share/fuzzel-config /root/.config/fuzzel/fuzzel.ini
+        say "installed fuzzel config ($(wc -l < /root/.config/fuzzel/fuzzel.ini) lines)"
       fi
 
       # river-wm-client clips its first window to 1x1 when this is set, so a
@@ -282,6 +296,15 @@ in
         say "wm client alive: $(pgrep -fc "$CLIENT" 2>/dev/null || true)"
       fi
 
+      # A solid-colour background layer surface. The compositor clears to black,
+      # so without this every region it fails to paint is black on black and
+      # cannot be told from empty desktop. Magenta is in nothing else on screen.
+      if [ ! -e /tmp/neoswc-vm-share/nobg ]; then
+        setsid swaybg -c '#ff00ff' > /tmp/swaybg.log 2>&1 &
+        sleep 2
+        say "swaybg alive: $(pgrep -c -x swaybg || true)"
+      fi
+
       # The example wm grid-tiles on every add, so each new client triggers a
       # multi-window relayout -- the exact operation the barrier makes atomic.
       # Keep their output: a client that dies silently is the whole problem.
@@ -303,13 +326,26 @@ in
       printf 'alpha\nbeta\ngamma\n' | setsid env WAYLAND_DEBUG=1 \
         fuzzel --dmenu --log-level=debug --log-no-syslog \
         > /tmp/fuzzel.log 2>&1 &
+      # The reported artefact -- a black frame around fuzzel -- lasts about a
+      # second, so the settled screendump below is far too late to catch it.
+      # Hand the host the moment fuzzel is launched and let it burst-capture.
+      say "MARK fuzzel-spawn"
+      touch /tmp/neoswc-vm-share/mark-fuzzel-spawn
+      wait_host fuzzel-spawn
       sleep 5
       say "fuzzel alive: $(pgrep -c -x fuzzel || true)"
       say "MARK fuzzel"
       touch /tmp/neoswc-vm-share/mark-fuzzel
       wait_host fuzzel
       pkill -x fuzzel 2>/dev/null || true
-      sleep 1
+      sleep 2
+      # Immediately after the layer surface goes away and before anything else
+      # happens: the screen has gone blank here in past runs, and every other
+      # mark is far enough downstream that a third window has already been added
+      # and the cause cannot be told apart from a relayout.
+      say "MARK fuzzel-gone (foot: $(ps -eo comm | grep -c '^foot$') alive)"
+      touch /tmp/neoswc-vm-share/mark-fuzzel-gone
+      wait_host fuzzel-gone
       cp /tmp/fuzzel.log /tmp/neoswc-vm-share/fuzzel.log 2>/dev/null || true
       say "fuzzel own log: $(grep -vE '^\[[0-9]+\.[0-9]+\]' /tmp/fuzzel.log 2>/dev/null | tail -c 1500 | tr '\n' '|')"
       say "fuzzel wire tail: $(tail -c 2500 /tmp/fuzzel.log 2>/dev/null | tr '\n' '|')"
