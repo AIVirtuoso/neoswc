@@ -566,6 +566,8 @@ register_test_binding(void)
 	binding = river_xkb_bindings_v1_get_xkb_binding(xkb_bindings, the_seat,
 	                                               0xffbe, 0);
 	river_xkb_binding_v1_add_listener(binding, &binding_listener, NULL);
+	/* A binding does nothing until enabled -- creating it is not enough. */
+	river_xkb_binding_v1_enable(binding);
 	say("registered F1 binding");
 
 	/* BTN_LEFT, no modifiers. */
@@ -574,6 +576,7 @@ register_test_binding(void)
 		    river_seat_v1_get_pointer_binding(the_seat, 0x110, 0);
 		river_pointer_binding_v1_add_listener(pb, &pointer_binding_listener,
 		                                      NULL);
+		river_pointer_binding_v1_enable(pb);
 		say("registered BTN_LEFT binding");
 	}
 }

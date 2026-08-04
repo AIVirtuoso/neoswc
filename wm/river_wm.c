@@ -566,7 +566,12 @@ modifiers_to_swc(uint32_t modifiers)
 	if (modifiers & RIVER_SEAT_V1_MODIFIERS_MOD4) {
 		result |= SWC_MOD_LOGO;
 	}
-	/* mod3 and mod5 have no swc equivalent and are dropped. */
+	if (modifiers & RIVER_SEAT_V1_MODIFIERS_MOD3) {
+		result |= SWC_MOD_MOD3;
+	}
+	if (modifiers & RIVER_SEAT_V1_MODIFIERS_MOD5) {
+		result |= SWC_MOD_MOD5;
+	}
 
 	return result;
 }
@@ -816,8 +821,13 @@ xkb_bindings_get_xkb_binding(struct wl_client *client,
 	wl_resource_set_implementation(binding->resource, &binding_impl, binding,
 	                               binding_resource_destroy);
 
-	/* The protocol says a binding starts enabled. */
-	binding_register(binding);
+	/*
+	 * Not registered here. The protocol is explicit that "the new key binding
+	 * is not enabled until initial configuration is completed and the enable
+	 * request is made", so registering on creation let a binding fire while the
+	 * manager was still setting itself up. A comment here used to claim the
+	 * opposite of what the spec says.
+	 */
 }
 
 static void
@@ -1105,7 +1115,8 @@ seat_get_pointer_binding(struct wl_client *client, struct wl_resource *resource,
 	wl_resource_set_implementation(binding->resource, &pointer_binding_impl,
 	                               binding, binding_resource_destroy);
 
-	binding_register(binding);
+	/* Same contract as a key binding: enabled by the enable request, not by
+	 * having been created. */
 }
 
 static void

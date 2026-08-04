@@ -68,7 +68,7 @@ struct xkb {
 	} keymap;
 
 	struct {
-		uint32_t ctrl, alt, super, shift;
+		uint32_t ctrl, alt, super, shift, mod3, mod5;
 	} indices;
 };
 

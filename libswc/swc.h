@@ -902,6 +902,13 @@ enum {
 	SWC_MOD_ALT = 1 << 1,
 	SWC_MOD_LOGO = 1 << 2,
 	SWC_MOD_SHIFT = 1 << 3,
+	/*
+	 * xkb's Mod3 and Mod5. Alt and Logo above are xkb's Mod1 and Mod4, so
+	 * these complete the set a keymap can actually produce; without them a
+	 * binding on either is silently unmatchable.
+	 */
+	SWC_MOD_MOD3 = 1 << 4,
+	SWC_MOD_MOD5 = 1 << 5,
 	SWC_MOD_ANY = ~0
 };
 

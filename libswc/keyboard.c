@@ -85,6 +85,20 @@ leave(struct input_focus_handler *handler,
 	    wl_keyboard_send_leave(resource, serial, view->surface->resource);
 }
 
+/*
+ * Whether an xkb modifier index is active.
+ *
+ * The index is XKB_MOD_INVALID when the keymap has no such modifier, and
+ * shifting by that is undefined. Shift, Control, Mod1 and Mod4 are present in
+ * every keymap worth the name, which is why this went unnoticed; Mod3 and Mod5
+ * are genuinely optional.
+ */
+static bool
+mod_active(uint32_t mods_active, uint32_t index)
+{
+	return index != XKB_MOD_INVALID && (mods_active & (1u << index));
+}
+
 static bool
 client_handle_key(struct keyboard *keyboard,
                   uint32_t time,
@@ -158,6 +172,12 @@ update_keymap(struct xkb *xkb)
 	    xkb_keymap_mod_get_index(xkb->keymap.map, XKB_MOD_NAME_LOGO);
 	xkb->indices.shift =
 	    xkb_keymap_mod_get_index(xkb->keymap.map, XKB_MOD_NAME_SHIFT);
+	/* ALT and LOGO above are aliases for Mod1 and Mod4; these are the other
+	 * two a keymap can bind. */
+	xkb->indices.mod3 =
+	    xkb_keymap_mod_get_index(xkb->keymap.map, XKB_MOD_NAME_MOD3);
+	xkb->indices.mod5 =
+	    xkb_keymap_mod_get_index(xkb->keymap.map, XKB_MOD_NAME_MOD5);
 
 	/* In order to send the keymap to clients, we must first convert it to a
 	 * string and then mmap it to a file. */
@@ -475,17 +495,23 @@ update_xkb_state:
 		/* Update keyboard modifier state. */
 		keyboard->modifier_state = modifier_state;
 		keyboard->modifiers = 0;
-		if (mods_active & (1 << keyboard->xkb.indices.ctrl)) {
+		if (mod_active(mods_active, keyboard->xkb.indices.ctrl)) {
 			keyboard->modifiers |= SWC_MOD_CTRL;
 		}
-		if (mods_active & (1 << keyboard->xkb.indices.alt)) {
+		if (mod_active(mods_active, keyboard->xkb.indices.alt)) {
 			keyboard->modifiers |= SWC_MOD_ALT;
 		}
-		if (mods_active & (1 << keyboard->xkb.indices.super)) {
+		if (mod_active(mods_active, keyboard->xkb.indices.super)) {
 			keyboard->modifiers |= SWC_MOD_LOGO;
 		}
-		if (mods_active & (1 << keyboard->xkb.indices.shift)) {
+		if (mod_active(mods_active, keyboard->xkb.indices.shift)) {
 			keyboard->modifiers |= SWC_MOD_SHIFT;
+		}
+		if (mod_active(mods_active, keyboard->xkb.indices.mod3)) {
+			keyboard->modifiers |= SWC_MOD_MOD3;
+		}
+		if (mod_active(mods_active, keyboard->xkb.indices.mod5)) {
+			keyboard->modifiers |= SWC_MOD_MOD5;
 		}
 
 		/* Run any modifier handlers. */
