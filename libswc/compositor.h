@@ -72,6 +72,15 @@ compositor_finalize(void);
 void
 compositor_damage_all(void);
 
+/*
+ * Recompute which screens every view is on, and repaint. Needed when a screen
+ * moves in the global coordinate space: a view's screen mask is derived from
+ * intersection, so moving the screen under it changes the answer without the
+ * view itself having changed at all.
+ */
+void
+compositor_update_screens(void);
+
 struct compositor_view {
 	struct view base;
 	struct surface *surface;

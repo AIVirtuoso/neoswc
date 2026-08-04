@@ -2,6 +2,13 @@
  *
  * Copyright (c) 2013, 2014 Michael Forney
  *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -22,6 +29,7 @@
  */
 
 #include "screen.h"
+#include "compositor.h"
 #include "drm.h"
 #include "event.h"
 #include "internal.h"
@@ -187,6 +195,44 @@ error1:
 	free(screen);
 error0:
 	return NULL;
+}
+
+EXPORT void
+swc_screen_set_position(struct swc_screen *base, int32_t x, int32_t y)
+{
+	struct screen *screen;
+	struct output *output;
+
+	if (!base || (base->geometry.x == x && base->geometry.y == y)) {
+		return;
+	}
+	screen = INTERNAL(base);
+
+	/*
+	 * The screen's geometry is a copy of its primary plane's view geometry --
+	 * see screen_new() -- and plane.c derives the CRTC source offset from the
+	 * difference between the two. They have to move together or the scanout
+	 * offset goes wrong.
+	 */
+	view_move(&screen->planes.primary.view, x, y);
+	screen->base.geometry = screen->planes.primary.view.geometry;
+	screen_update_usable_geometry(screen);
+
+	wl_list_for_each(output, &screen->outputs, link) output_send_geometry(output);
+
+	/*
+	 * Not re-sent: zxdg_output_v1.logical_position. xdg_output.c does not keep
+	 * its resources, so there is nobody to send to. Clients that bound it
+	 * before the move keep a stale logical position until they rebind.
+	 */
+
+	if (screen->handler->geometry_changed) {
+		screen->handler->geometry_changed(screen->handler_data);
+	}
+
+	/* A view's screen mask comes from intersection, so moving the screen out
+	 * from under it changes which screens it is on. */
+	compositor_update_screens();
 }
 
 void

@@ -933,6 +933,25 @@ compositor_damage_all(void)
 	schedule_updates(-1);
 }
 
+void
+compositor_update_screens(void)
+{
+	struct compositor_view *view;
+
+	if (!compositor.initialized) {
+		return;
+	}
+
+	wl_list_for_each(view, &compositor.views, link)
+	{
+		if (view->visible) {
+			view_update_screens(&view->base);
+		}
+	}
+
+	compositor_damage_all();
+}
+
 static void
 overlay_damage_region(int32_t x, int32_t y, uint32_t width, uint32_t height,
                       uint32_t border_width)

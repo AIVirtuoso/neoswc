@@ -1,3 +1,14 @@
+/* swc: libswc/output.c
+ *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The upstream file carries no header of its own; it is covered by the MIT
+ * LICENSE at the top of the tree. Modifications by neoswc contributors are
+ * licensed GPL-3.0-or-later; see COPYING.
+ */
+
 #include "output.h"
 #include "drm.h"
 #include "internal.h"
@@ -68,6 +79,25 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 		 * that and renders a 0x0 buffer. */
 		wl_output_send_scale(resource, 1);
 		wl_output_send_done(resource);
+	}
+}
+
+void
+output_send_geometry(struct output *output)
+{
+	struct screen *screen = output->screen;
+	struct wl_resource *resource;
+
+	wl_resource_for_each(resource, &output->resources)
+	{
+		wl_output_send_geometry(resource, screen->base.geometry.x,
+		                        screen->base.geometry.y,
+		                        output->physical_width, output->physical_height,
+		                        0, "unknown", "unknown",
+		                        WL_OUTPUT_TRANSFORM_NORMAL);
+		if (wl_resource_get_version(resource) >= 2) {
+			wl_output_send_done(resource);
+		}
 	}
 }
 

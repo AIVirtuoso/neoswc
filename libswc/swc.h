@@ -214,6 +214,26 @@ swc_screen_set_handler(struct swc_screen *screen,
                        const struct swc_screen_handler *handler, void *data);
 
 /**
+ * Move the screen to the given position in the global coordinate space.
+ *
+ * swc places screens left to right in the order their connectors are
+ * enumerated, which has nothing to do with how the monitors are physically
+ * arranged. This is how a compositor overrides that -- from a config file, or
+ * on behalf of a client speaking an output-configuration protocol.
+ *
+ * Nothing validates the result: screens may be left overlapping or with gaps
+ * between them, exactly as the caller asked. Only the logical position changes;
+ * the mode and the scanout are untouched.
+ *
+ * Both wl_output.geometry and the screen's geometry_changed handler fire.
+ * zxdg_output_v1.logical_position is *not* re-sent -- swc does not keep those
+ * resources -- so a client that bound xdg-output before the move keeps a stale
+ * logical position until it rebinds.
+ */
+void
+swc_screen_set_position(struct swc_screen *screen, int32_t x, int32_t y);
+
+/**
  * Get the registry name of the wl_output global corresponding to this screen,
  * as seen by the given client.
  *
