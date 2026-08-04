@@ -1947,7 +1947,12 @@ river_wm_add_screen(struct swc_screen *screen)
 	wl_list_insert(wm.outputs.prev, &output->link);
 	swc_screen_set_handler(screen, &screen_handler, output);
 
-	/* Windows are placed on this one until multi-output placement exists. */
+	/*
+	 * A fallback screen, not a placement policy: windows are positioned by the
+	 * manager through node_set_position() in absolute coordinates, so they
+	 * follow whatever layout swc reports and need no per-output handling here.
+	 * This is only somewhere to point when nothing else names a screen.
+	 */
 	if (!wm.screen) {
 		wm.screen = screen;
 	}
