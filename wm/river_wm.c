@@ -418,7 +418,14 @@ output_set_presentation_mode(struct wl_client *client,
 {
 	(void)client;
 	(void)resource;
-	(void)mode; /* tearing-control is not implemented */
+	(void)mode;
+	/*
+	 * Accepted and ignored, permanently. Honouring this means tearing
+	 * presentation, and tearing-control is out of scope for this compositor --
+	 * a code path through the whole present sequence to buy latency in games.
+	 * This is a decision, not an unfinished stub: a manager asking for tearing
+	 * gets vsync and is not disconnected for asking.
+	 */
 }
 
 static const struct river_output_v1_interface output_impl = {
