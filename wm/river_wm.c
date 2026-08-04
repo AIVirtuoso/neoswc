@@ -1272,12 +1272,30 @@ window_fullscreen(struct wl_client *client, struct wl_resource *resource,
                   struct wl_resource *output)
 {
 	struct river_window *window = wl_resource_get_user_data(resource);
+	struct river_output *target;
 
 	(void)client;
-	(void)output;
-	if (window && !window->closed) {
-		swc_window_set_fullscreen(window->swc, wm.screen);
+	if (!window || window->closed) {
+		return;
 	}
+
+	/*
+	 * The manager names the output; use it. This used to fullscreen onto
+	 * wm.screen -- whichever screen came up first -- so on a multi-output
+	 * setup a window went fullscreen on the wrong monitor.
+	 */
+	target = output ? wl_resource_get_user_data(output) : NULL;
+	if (!target) {
+		/*
+		 * The screen is gone. The protocol says removing the output a window
+		 * is fullscreen on acts as exit_fullscreen in the same sequence, and
+		 * the manager gets a removed event, so leave the state alone rather
+		 * than guessing at another screen.
+		 */
+		return;
+	}
+
+	swc_window_set_fullscreen(window->swc, target->swc);
 }
 
 static void
@@ -1884,6 +1902,13 @@ handle_screen_destroy(void *data)
 
 	if (output->resource) {
 		river_output_v1_send_removed(output->resource);
+		/*
+		 * The client destroys the river_output_v1 after it receives removed,
+		 * so the resource outlives this struct. Clear the back pointer rather
+		 * than leaving every handler holding freed memory -- they all already
+		 * tolerate NULL user data.
+		 */
+		wl_resource_set_user_data(output->resource, NULL);
 	}
 	if (wm.screen == output->swc) {
 		wm.screen = NULL;
