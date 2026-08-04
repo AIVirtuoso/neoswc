@@ -2090,6 +2090,67 @@ compositor_view_damage_decor(struct compositor_view *view)
 
 /* }}} */
 
+/*
+ * The clip boxes a view inherits from the surfaces it is part of.
+ *
+ * A subsurface gets its own compositor_view (subsurface.c), while a window
+ * manager sets a clip box on the window -- that is, on the toplevel's view
+ * alone. Without walking up, a client's own decorations, or any subsurface
+ * content, keep painting at full size while the window's content clips. The
+ * protocol is explicit that a clip box covers "the window, including borders
+ * and decoration surfaces".
+ *
+ * Only subsurfaces inherit. A child toplevel (window.c) and an xdg popup
+ * (xdg_shell.c) also carry a parent view, but each is its own window as far as
+ * the manager is concerned, with its own box; clipping a dialog because its
+ * parent is clipped would be wrong.
+ *
+ * Both kinds of box apply to a child: a subsurface is part of the parent's
+ * content, so a content clip box constrains it as much as a full one does. That
+ * differs from a view's own content clip box, which is deliberately kept out of
+ * view->clip so that repaint_view() can redraw borders around what survives.
+ *
+ * Returns false when nothing above constrains the view, so the caller can skip
+ * the region arithmetic; `allowed` is only initialised when it returns true.
+ */
+static bool
+init_inherited_clip(const struct compositor_view *view,
+                    pixman_region32_t *allowed)
+{
+	const struct compositor_view *v;
+	pixman_region32_t box;
+	bool constrained = false;
+
+	pixman_region32_init_with_extents(allowed, &view->extents);
+
+	for (v = view; v->parent; v = v->parent) {
+		if (!v->surface || !v->surface->subsurface) {
+			break;
+		}
+		if (!view_clip_boxes_enabled(v->parent)) {
+			continue;
+		}
+		if (v->parent->clip_box.enabled) {
+			clip_box_region(v->parent, &v->parent->clip_box, &box);
+			pixman_region32_intersect(allowed, allowed, &box);
+			pixman_region32_fini(&box);
+			constrained = true;
+		}
+		if (v->parent->content_clip_box.enabled) {
+			init_content_region(v->parent, &box);
+			pixman_region32_intersect(allowed, allowed, &box);
+			pixman_region32_fini(&box);
+			constrained = true;
+		}
+	}
+
+	if (!constrained) {
+		pixman_region32_fini(allowed);
+	}
+
+	return constrained;
+}
+
 static void
 calculate_damage(void)
 {
@@ -2126,6 +2187,19 @@ calculate_damage(void)
 			pixman_region32_fini(&outside);
 		}
 
+		/* And the boxes set on whatever this is a subsurface of. */
+		{
+			pixman_region32_t allowed, outside;
+
+			if (init_inherited_clip(view, &allowed)) {
+				pixman_region32_init_with_extents(&outside, &view->extents);
+				pixman_region32_subtract(&outside, &outside, &allowed);
+				pixman_region32_union(&view->clip, &view->clip, &outside);
+				pixman_region32_fini(&outside);
+				pixman_region32_fini(&allowed);
+			}
+		}
+
 		/* Translate the opaque region to global coordinates. */
 		pixman_region32_copy(&surface_opaque, &view->surface->state.opaque);
 		pixman_region32_translate(&surface_opaque,
@@ -2148,6 +2222,18 @@ calculate_damage(void)
 			pixman_region32_intersect(&surface_opaque, &surface_opaque,
 			                          &clip_region);
 			pixman_region32_fini(&clip_region);
+		}
+		{
+			/* A subsurface clipped away must not go on occluding what is
+			 * under it, or the views below would be skipped and the area
+			 * would come out as background. */
+			pixman_region32_t allowed;
+
+			if (init_inherited_clip(view, &allowed)) {
+				pixman_region32_intersect(&surface_opaque, &surface_opaque,
+				                          &allowed);
+				pixman_region32_fini(&allowed);
+			}
 		}
 
 		/* Add the surface's opaque region to the accumulated opaque region. */

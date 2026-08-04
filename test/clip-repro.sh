@@ -164,11 +164,29 @@ done
 # from white to grey -- which is foot drawing it focused vs unfocused, varies
 # between runs, and means nothing. The decisive comparison is the second frame
 # against the third: same clip box, and only one of them still has a title bar.
+# Captions are derived from the measurements, never asserted. An earlier version
+# hardcoded "DECORATIONS SURVIVED" for the clipped run, so after the fix the
+# image cheerfully reported the bug while the numbers beside it said otherwise.
 strip_label() {
+	local title=$2 body=$3 verdict
+
 	case $1 in
-	baseline) echo "1  no clip: decorations and content both drawn" ;;
-	clipped-csd) echo "2  clipped, client-side decor: DECORATIONS SURVIVED ($2% bg), content gone ($3% bg)  <- BUG" ;;
-	clipped-ssd) echo "3  clipped, server-side decor: nothing survived ($2% bg, $3% bg)  <- control" ;;
+	baseline)
+		echo "1  no clip: decorations drawn ($title% bg), content drawn ($body% bg)"
+		;;
+	clipped-csd)
+		if [ "$title" -lt 20 ]; then
+			verdict="DECORATIONS SURVIVED  <- BUG"
+		elif [ "$title" -ge 80 ]; then
+			verdict="decorations clipped too  <- correct"
+		else
+			verdict="decorations partly clipped  <- unclear"
+		fi
+		echo "2  clipped, client-side decor: title $title% bg, content $body% bg   $verdict"
+		;;
+	clipped-ssd)
+		echo "3  clipped, server-side decor: title $title% bg, content $body% bg   <- control, no subsurfaces"
+		;;
 	esac
 }
 
