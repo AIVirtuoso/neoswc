@@ -92,6 +92,7 @@ in
     # Screen capture, checked against QEMU's screendump. grim speaks both
     # ext-image-copy-capture-v1 and zwlr-screencopy-v1.
     pkgs.grim
+    pkgs.slurp
   ];
 
   # swc-launch opens DRM devices and manages the VT, so it must be setuid.
@@ -138,6 +139,7 @@ in
       pkgs.wayland-utils
       pkgs.swaybg
       pkgs.grim
+      pkgs.slurp
     ];
     script = ''
       OUT=/tmp/neoswc-vm-share/smoke.log
@@ -415,6 +417,29 @@ in
       else
         say "grim FAILED: $(tr '\n' '|' < /tmp/grim.log | head -c 200)"
       fi
+      # Region capture, which is what `grim -g "$(slurp)"` ends up doing: slurp
+      # only prints a geometry, grim crops client-side. Testing the geometry
+      # path without needing an interactive drag.
+      rm -f /tmp/neoswc-vm-share/capture-region.png
+      if grim -g '100,80 400x300' /tmp/neoswc-vm-share/capture-region.png \
+        > /tmp/grim-region.log 2>&1; then
+        say "grim region: $(stat -c %s /tmp/neoswc-vm-share/capture-region.png 2>/dev/null) bytes"
+      else
+        say "grim region FAILED: $(tr '\n' '|' < /tmp/grim-region.log | head -c 200)"
+      fi
+
+      # slurp is the other half of that pipeline. It is interactive, so this
+      # only checks it can bind what it needs and reach the point of waiting
+      # for a drag -- a missing global makes it exit immediately instead.
+      setsid slurp > /tmp/slurp.log 2>&1 &
+      sleep 2
+      if pgrep -x slurp >/dev/null 2>&1; then
+        say "slurp: running (bound its globals)"
+        pkill -x slurp 2>/dev/null || true
+      else
+        say "slurp FAILED: $(tr '\n' '|' < /tmp/slurp.log | head -c 200)"
+      fi
+
       say "MARK capture"
       touch /tmp/neoswc-vm-share/mark-capture
       wait_host capture
