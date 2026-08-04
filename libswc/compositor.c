@@ -8,6 +8,13 @@
  *     Copyright © 2008-2011 Kristian Høgsberg
  *     Copyright © 2012 Collabora, Ltd.
  *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -240,17 +247,28 @@ error0:
 
 /* Rendering {{{ */
 
+static bool
+view_clip_boxes_enabled(const struct compositor_view *view);
+static void
+init_content_region(const struct compositor_view *view,
+                    pixman_region32_t *region);
+static void
+expanded_region(const pixman_region32_t *source, int32_t amount,
+                pixman_region32_t *region);
+
 static void
 repaint_view(struct target *target, struct compositor_view *view,
              pixman_region32_t *damage)
 {
 	pixman_region32_t geom_region, buffer_region, border_region, view_damage,
-	    buffer_damage, border_damage;
+	    buffer_damage, border_damage, content_region;
 	const struct swc_rectangle *geom = &view->base.geometry,
 	                           *target_geom = &target->view->geometry;
 	int32_t buf_x, buf_y;
 	uint32_t buf_w, buf_h;
 	int64_t total_border;
+	bool content_clip = view_clip_boxes_enabled(view) &&
+	                    view->content_clip_box.enabled;
 
 	if (!view->base.buffer) {
 		return;
@@ -271,12 +289,20 @@ repaint_view(struct target *target, struct compositor_view *view,
 	} else {
 		pixman_region32_init_rect(&buffer_region, buf_x, buf_y, buf_w, buf_h);
 	}
+	init_content_region(view, &content_region);
 	pixman_region32_init_rect(&border_region,
 	                          geom->x - (int32_t)total_border,
 	                          geom->y - (int32_t)total_border,
 	                          geom->width + (uint32_t)(2 * total_border),
 	                          geom->height + (uint32_t)(2 * total_border));
 	pixman_region32_subtract(&border_region, &border_region, &geom_region);
+	if (content_clip) {
+		pixman_region32_fini(&border_region);
+		expanded_region(&content_region, (int32_t)total_border,
+		                &border_region);
+		pixman_region32_subtract(&border_region, &border_region,
+		                         &content_region);
+	}
 	pixman_region32_init_with_extents(&view_damage, &view->extents);
 	pixman_region32_init(&buffer_damage);
 	pixman_region32_init(&border_damage);
@@ -285,6 +311,13 @@ repaint_view(struct target *target, struct compositor_view *view,
 	pixman_region32_subtract(&view_damage, &view_damage, &view->clip);
 	pixman_region32_intersect(&border_damage, &view_damage, &border_region);
 	pixman_region32_intersect(&buffer_damage, &view_damage, &buffer_region);
+	if (content_clip) {
+		if (!pixman_region32_not_empty(&content_region)) {
+			pixman_region32_clear(&border_damage);
+		}
+		pixman_region32_intersect(&buffer_damage, &buffer_damage,
+		                          &content_region);
+	}
 
 	if (pixman_region32_not_empty(&buffer_damage)) {
 		pixman_region32_translate(&buffer_damage,
@@ -298,11 +331,16 @@ repaint_view(struct target *target, struct compositor_view *view,
 	pixman_region32_fini(&buffer_damage);
 
 	pixman_region32_t in_rect;
-	pixman_region32_init_rect(&in_rect,
-	                          geom->x - view->border.inwidth,
-	                          geom->y - view->border.inwidth,
-	                          geom->width + (2 * view->border.inwidth),
-	                          geom->height + (2 * view->border.inwidth));
+	if (content_clip) {
+		expanded_region(&content_region, (int32_t)view->border.inwidth,
+		                &in_rect);
+	} else {
+		pixman_region32_init_rect(&in_rect,
+		                          geom->x - view->border.inwidth,
+		                          geom->y - view->border.inwidth,
+		                          geom->width + (2 * view->border.inwidth),
+		                          geom->height + (2 * view->border.inwidth));
+	}
 
 	pixman_region32_t out_border;
 	pixman_region32_init(&out_border);
@@ -310,12 +348,17 @@ repaint_view(struct target *target, struct compositor_view *view,
 
 	pixman_region32_t in_border;
 	pixman_region32_init(&in_border);
-	pixman_region32_subtract(&in_border, &in_rect, &geom_region);
+	if (content_clip) {
+		pixman_region32_subtract(&in_border, &in_rect, &content_region);
+	} else {
+		pixman_region32_subtract(&in_border, &in_rect, &geom_region);
+	}
 	pixman_region32_intersect(&in_border, &in_border, &border_damage);
 
 	pixman_region32_fini(&geom_region);
 	pixman_region32_fini(&buffer_region);
 	pixman_region32_fini(&border_region);
+	pixman_region32_fini(&content_region);
 
 	/* Draw border */
 	if (view->border.outwidth > 0 && pixman_region32_not_empty(&out_border)) {
@@ -509,6 +552,113 @@ damage_view(struct compositor_view *view)
 	damage_below_view(view);
 	view->border.damaged_border1 = true;
 	view->border.damaged_border2 = true;
+}
+
+static bool
+view_clip_boxes_enabled(const struct compositor_view *view)
+{
+	return !view->window || view->window->mode != WINDOW_MODE_FULLSCREEN;
+}
+
+static void
+region_init_box(pixman_region32_t *region, int64_t x1, int64_t y1, int64_t x2,
+                int64_t y2)
+{
+	pixman_region32_init(region);
+
+	if (x1 < INT32_MIN) {
+		x1 = INT32_MIN;
+	}
+	if (y1 < INT32_MIN) {
+		y1 = INT32_MIN;
+	}
+	if (x2 > INT32_MAX) {
+		x2 = INT32_MAX;
+	}
+	if (y2 > INT32_MAX) {
+		y2 = INT32_MAX;
+	}
+
+	if (x2 <= x1 || y2 <= y1) {
+		return;
+	}
+
+	pixman_region32_union_rect(region, region, (int32_t)x1, (int32_t)y1,
+	                           (uint32_t)(x2 - x1), (uint32_t)(y2 - y1));
+}
+
+static void
+clip_box_region(const struct compositor_view *view,
+                const struct compositor_clip_box *clip,
+                pixman_region32_t *region)
+{
+	const struct swc_rectangle *geometry = &view->base.geometry;
+	int64_t x1 = (int64_t)geometry->x + clip->x;
+	int64_t y1 = (int64_t)geometry->y + clip->y;
+
+	region_init_box(region, x1, y1, x1 + clip->width, y1 + clip->height);
+}
+
+/* Bounds of the window content, narrowed to the content clip box when one is
+ * in effect. May come out empty (x2 <= x1); region_init_box() copes. */
+static void
+content_box_bounds(const struct compositor_view *view, int64_t *x1,
+                   int64_t *y1, int64_t *x2, int64_t *y2)
+{
+	const struct swc_rectangle *geometry = &view->base.geometry;
+
+	*x1 = geometry->x;
+	*y1 = geometry->y;
+	*x2 = *x1 + geometry->width;
+	*y2 = *y1 + geometry->height;
+
+	if (view_clip_boxes_enabled(view) && view->content_clip_box.enabled) {
+		int64_t clip_x1 = (int64_t)geometry->x + view->content_clip_box.x;
+		int64_t clip_y1 = (int64_t)geometry->y + view->content_clip_box.y;
+		int64_t clip_x2 = clip_x1 + view->content_clip_box.width;
+		int64_t clip_y2 = clip_y1 + view->content_clip_box.height;
+
+		if (*x1 < clip_x1) {
+			*x1 = clip_x1;
+		}
+		if (*y1 < clip_y1) {
+			*y1 = clip_y1;
+		}
+		if (*x2 > clip_x2) {
+			*x2 = clip_x2;
+		}
+		if (*y2 > clip_y2) {
+			*y2 = clip_y2;
+		}
+	}
+}
+
+static void
+init_content_region(const struct compositor_view *view,
+                    pixman_region32_t *region)
+{
+	int64_t x1, y1, x2, y2;
+
+	content_box_bounds(view, &x1, &y1, &x2, &y2);
+	region_init_box(region, x1, y1, x2, y2);
+}
+
+static void
+expanded_region(const pixman_region32_t *source, int32_t amount,
+                pixman_region32_t *region)
+{
+	pixman_box32_t *box;
+
+	if (!pixman_region32_not_empty(source)) {
+		pixman_region32_init(region);
+		return;
+	}
+
+	box = pixman_region32_extents((pixman_region32_t *)source);
+
+	region_init_box(region, (int64_t)box->x1 - amount,
+	                (int64_t)box->y1 - amount, (int64_t)box->x2 + amount,
+	                (int64_t)box->y2 + amount);
 }
 
 static void
@@ -1492,6 +1642,16 @@ compositor_create_view(struct surface *surface)
 	view->extents.y1 = 0;
 	view->extents.x2 = 0;
 	view->extents.y2 = 0;
+	view->clip_box.enabled = false;
+	view->clip_box.x = 0;
+	view->clip_box.y = 0;
+	view->clip_box.width = 0;
+	view->clip_box.height = 0;
+	view->content_clip_box.enabled = false;
+	view->content_clip_box.x = 0;
+	view->content_clip_box.y = 0;
+	view->content_clip_box.width = 0;
+	view->content_clip_box.height = 0;
 	view->border.outwidth = 0;
 	view->border.outcolor = 0x000000;
 	view->border.damaged_border1 = false;
@@ -1656,6 +1816,45 @@ compositor_view_set_border_width(struct compositor_view *view,
 	update(&view->base);
 }
 
+static void
+set_clip_box(struct compositor_view *view, struct compositor_clip_box *box,
+             int32_t x, int32_t y, uint32_t width, uint32_t height)
+{
+	bool enabled = width != 0 && height != 0;
+
+	if (box->enabled == enabled &&
+	    (!enabled || (box->x == x && box->y == y && box->width == width &&
+	                   box->height == height))) {
+		return;
+	}
+
+	box->enabled = enabled;
+	box->x = x;
+	box->y = y;
+	box->width = width;
+	box->height = height;
+
+	if (view->visible) {
+		damage_view(view);
+		update(&view->base);
+	}
+}
+
+void
+compositor_view_set_clip_box(struct compositor_view *view, int32_t x, int32_t y,
+                             uint32_t width, uint32_t height)
+{
+	set_clip_box(view, &view->clip_box, x, y, width, height);
+}
+
+void
+compositor_view_set_content_clip_box(struct compositor_view *view, int32_t x,
+                                     int32_t y, uint32_t width,
+                                     uint32_t height)
+{
+	set_clip_box(view, &view->content_clip_box, x, y, width, height);
+}
+
 void
 compositor_view_set_border_color(struct compositor_view *view,
                                  uint32_t outcolor, uint32_t incolor)
@@ -1723,6 +1922,16 @@ calculate_damage(void)
 
 		/* Clip the surface by the opaque region covering it. */
 		pixman_region32_copy(&view->clip, &compositor.opaque);
+		if (view_clip_boxes_enabled(view) && view->clip_box.enabled) {
+			pixman_region32_t clip_region, outside;
+
+			clip_box_region(view, &view->clip_box, &clip_region);
+			pixman_region32_init_with_extents(&outside, &view->extents);
+			pixman_region32_subtract(&outside, &outside, &clip_region);
+			pixman_region32_union(&view->clip, &view->clip, &outside);
+			pixman_region32_fini(&clip_region);
+			pixman_region32_fini(&outside);
+		}
 
 		/* Translate the opaque region to global coordinates. */
 		pixman_region32_copy(&surface_opaque, &view->surface->state.opaque);
@@ -1731,6 +1940,22 @@ calculate_damage(void)
 		                          geom->y - view->buffer_offset_y);
 		pixman_region32_intersect(&surface_opaque, &surface_opaque,
 		                          &view_region);
+		if (view_clip_boxes_enabled(view) && view->clip_box.enabled) {
+			pixman_region32_t clip_region;
+
+			clip_box_region(view, &view->clip_box, &clip_region);
+			pixman_region32_intersect(&surface_opaque, &surface_opaque,
+			                          &clip_region);
+			pixman_region32_fini(&clip_region);
+		}
+		if (view_clip_boxes_enabled(view) && view->content_clip_box.enabled) {
+			pixman_region32_t clip_region;
+
+			init_content_region(view, &clip_region);
+			pixman_region32_intersect(&surface_opaque, &surface_opaque,
+			                          &clip_region);
+			pixman_region32_fini(&clip_region);
+		}
 
 		/* Add the surface's opaque region to the accumulated opaque region. */
 		pixman_region32_union(&compositor.opaque, &compositor.opaque,

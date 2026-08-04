@@ -163,6 +163,14 @@ in
         say "installed rill config ($(wc -l < /root/.config/rill/config.zon) lines)"
       fi
 
+      # river-wm-client clips its first window to 1x1 when this is set, so a
+      # screendump against an unclipped baseline shows whether clipping reaches
+      # the framebuffer at all.
+      if [ -s /tmp/neoswc-vm-share/clip ]; then
+        export NEOSWC_TEST_CLIP=$(cat /tmp/neoswc-vm-share/clip)
+        say "clip test mode: $NEOSWC_TEST_CLIP"
+      fi
+
       say "dri devices: $(ls /dev/dri 2>/dev/null | tr '\n' ' ')"
       if [ ! -e /dev/dri/card0 ]; then
         say "FAIL no DRM device; virtio-gpu did not bind"

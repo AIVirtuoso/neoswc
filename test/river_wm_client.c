@@ -39,6 +39,9 @@ static struct wl_shm *shm;
 static struct window windows[MAX_WINDOWS];
 static unsigned num_windows;
 static bool running = true;
+static bool clip_test;
+static bool content_clip_test;
+static bool clip_test_done;
 
 /* Learned from river_output_v1; these are only a fallback for the window that
  * arrives before any output has been advertised. */
@@ -289,6 +292,21 @@ manager_render_start(void *data, struct river_window_manager_v1 *proxy)
 			river_node_v1_set_position(windows[i].node, 0,
 			                           (int32_t)row * height);
 			river_node_v1_place_top(windows[i].node);
+			if (!clip_test_done && (clip_test || content_clip_test)) {
+				if (content_clip_test) {
+					/* A visible border, so the screendump shows it
+					 * reshaped around the clipped content. */
+					river_window_v1_set_borders(windows[i].proxy, 0xf, 8,
+					                             0xffff, 0, 0, 0xffff);
+					river_window_v1_set_content_clip_box(
+					    windows[i].proxy, 0, 0, 1, 1);
+				} else {
+					river_window_v1_set_clip_box(windows[i].proxy, 0, 0, 1,
+					                             1);
+				}
+				clip_test_done = true;
+				say("clip test: first window restricted to 1x1");
+			}
 			++row;
 		}
 	}
@@ -687,9 +705,13 @@ main(int argc, char *argv[])
 {
 	struct wl_display *display;
 	struct wl_registry *registry;
+	const char *clip_mode;
 
 	(void)argc;
 	(void)argv;
+	clip_mode = getenv("NEOSWC_TEST_CLIP");
+	clip_test = clip_mode && strcmp(clip_mode, "full") == 0;
+	content_clip_test = clip_mode && strcmp(clip_mode, "content") == 0;
 
 	display = wl_display_connect(NULL);
 	if (!display) {

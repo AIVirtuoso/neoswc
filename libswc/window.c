@@ -565,11 +565,13 @@ swc_window_set_fullscreen(struct swc_window *base, struct swc_screen *screen)
 			window->impl->set_mode(window, WINDOW_MODE_FULLSCREEN);
 		}
 		window->mode = WINDOW_MODE_FULLSCREEN;
+		compositor_damage_all();
 	}
 
 	else {
 		swc_window_set_geometry(base, &window->prev.geom);
 		window->mode = window->prev.mode;
+		compositor_damage_all();
 	}
 }
 
@@ -676,6 +678,32 @@ swc_window_get_geometry(const struct swc_window *base,
 
 	*geometry = window->view->base.geometry;
 	return true;
+}
+
+EXPORT void
+swc_window_set_clip_box(struct swc_window *base, int32_t x, int32_t y,
+                        uint32_t width, uint32_t height)
+{
+	struct window *window = INTERNAL(base);
+
+	if (!window || !window->view) {
+		return;
+	}
+
+	compositor_view_set_clip_box(window->view, x, y, width, height);
+}
+
+EXPORT void
+swc_window_set_content_clip_box(struct swc_window *base, int32_t x, int32_t y,
+                                uint32_t width, uint32_t height)
+{
+	struct window *window = INTERNAL(base);
+
+	if (!window || !window->view) {
+		return;
+	}
+
+	compositor_view_set_content_clip_box(window->view, x, y, width, height);
 }
 
 EXPORT void

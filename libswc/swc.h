@@ -621,6 +621,22 @@ swc_window_get_geometry(const struct swc_window *window,
                         struct swc_rectangle *geometry);
 
 /**
+ * Clip the window, including its borders and decorations, to a box relative
+ * to the window's content geometry. A zero width or height disables clipping.
+ */
+void
+swc_window_set_clip_box(struct swc_window *window, int32_t x, int32_t y,
+                        uint32_t width, uint32_t height);
+
+/**
+ * Clip only the window content to a box relative to the window's content
+ * geometry. A zero width or height disables content clipping.
+ */
+void
+swc_window_set_content_clip_box(struct swc_window *window, int32_t x,
+                                int32_t y, uint32_t width, uint32_t height);
+
+/**
  * Get the pid of the client that owns this window
  *
  * returns pid, or 0 if unavailable

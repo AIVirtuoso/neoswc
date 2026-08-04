@@ -1409,12 +1409,40 @@ static void
 window_set_box(struct wl_client *client, struct wl_resource *resource,
                int32_t x, int32_t y, int32_t width, int32_t height)
 {
+	struct river_window *window = wl_resource_get_user_data(resource);
+
 	(void)client;
-	(void)resource;
-	(void)x;
-	(void)y;
-	(void)width;
-	(void)height;
+	if (width < 0 || height < 0) {
+		wl_resource_post_error(resource,
+		                       RIVER_WINDOW_V1_ERROR_INVALID_CLIP_BOX,
+		                       "width/height must be greater than or equal to 0");
+		return;
+	}
+
+	if (window && !window->closed) {
+		swc_window_set_clip_box(window->swc, x, y, (uint32_t)width,
+		                        (uint32_t)height);
+	}
+}
+
+static void
+window_set_content_box(struct wl_client *client, struct wl_resource *resource,
+                       int32_t x, int32_t y, int32_t width, int32_t height)
+{
+	struct river_window *window = wl_resource_get_user_data(resource);
+
+	(void)client;
+	if (width < 0 || height < 0) {
+		wl_resource_post_error(resource,
+		                       RIVER_WINDOW_V1_ERROR_INVALID_CLIP_BOX,
+		                       "width/height must be greater than or equal to 0");
+		return;
+	}
+
+	if (window && !window->closed) {
+		swc_window_set_content_clip_box(window->swc, x, y, (uint32_t)width,
+		                                (uint32_t)height);
+	}
 }
 
 static void
@@ -1451,7 +1479,7 @@ static const struct river_window_v1_interface window_impl = {
     .fullscreen = window_fullscreen,
     .exit_fullscreen = window_exit_fullscreen,
     .set_clip_box = window_set_box,
-    .set_content_clip_box = window_set_box,
+    .set_content_clip_box = window_set_content_box,
     .set_dimension_bounds = window_set_dimension_bounds,
 };
 

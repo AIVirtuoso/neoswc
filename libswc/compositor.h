@@ -1,6 +1,12 @@
 /* swc: libswc/compositor.h
  *
  * Copyright (c) 2013, 2014 Michael Forney
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -33,6 +39,12 @@
 struct screen;
 struct wld_buffer;
 struct wld_font;
+
+struct compositor_clip_box {
+	bool enabled;
+	int32_t x, y;
+	uint32_t width, height;
+};
 
 struct decor_part_buffer {
 	void *data;
@@ -84,6 +96,8 @@ struct compositor_view {
 	/* The region that is covered by opaque regions of surfaces above this
 	 * surface. */
 	pixman_region32_t clip;
+	struct compositor_clip_box clip_box;
+	struct compositor_clip_box content_clip_box;
 
 	struct {
 		uint32_t outwidth;
@@ -144,6 +158,13 @@ compositor_view_set_border_color(struct compositor_view *view,
 void
 compositor_view_set_border_width(struct compositor_view *view,
                                  uint32_t outwidth, uint32_t inwidth);
+void
+compositor_view_set_clip_box(struct compositor_view *view, int32_t x, int32_t y,
+                             uint32_t width, uint32_t height);
+void
+compositor_view_set_content_clip_box(struct compositor_view *view, int32_t x,
+                                     int32_t y, uint32_t width,
+                                     uint32_t height);
 void
 compositor_view_set_decor(struct compositor_view *view,
                            const struct swc_decor *decor);
