@@ -113,9 +113,33 @@ RT="${XDG_RUNTIME_DIR:-/tmp/XDG_RUNTIME_DIR_$(id -u)}"
 	for _ in $(seq 1 40); do
 		sock=$(ls "$RT"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
 		if [ -n "$sock" ]; then
-			XDG_RUNTIME_DIR="$RT" WAYLAND_DISPLAY="$(basename "$sock")" \
-				"${TERMINAL:-foot}" >> "$LOG" 2>&1 &
-			echo "spawned ${TERMINAL:-foot} on $(basename "$sock")" >> "$LOG"
+			export XDG_RUNTIME_DIR="$RT"
+			export WAYLAND_DISPLAY="$(basename "$sock")"
+
+			# Monitor arrangement. The session's kanshi runs under
+			# wm-session.target, which is gated on XDG_CURRENT_DESKTOP and so
+			# never starts on a bare VT -- meaning the compositor offered
+			# zwlr_output_management_v1 and nothing ever spoke it, and the
+			# screens kept swc's connector-enumeration order. Start it here so
+			# a hardware run tests the arrangement rather than assuming it.
+			if command -v wlr-randr >/dev/null 2>&1; then
+				echo "heads before kanshi:" >> "$LOG"
+				wlr-randr >> "$LOG" 2>&1 || true
+			fi
+			if command -v kanshi >/dev/null 2>&1; then
+				kanshi >> "$LOG" 2>&1 &
+				echo "started kanshi" >> "$LOG"
+				sleep 2
+				if command -v wlr-randr >/dev/null 2>&1; then
+					echo "heads after kanshi:" >> "$LOG"
+					wlr-randr >> "$LOG" 2>&1 || true
+				fi
+			else
+				echo "kanshi not found; screens keep swc's enumeration order" >> "$LOG"
+			fi
+
+			"${TERMINAL:-foot}" >> "$LOG" 2>&1 &
+			echo "spawned ${TERMINAL:-foot} on $WAYLAND_DISPLAY" >> "$LOG"
 			exit 0
 		fi
 		sleep 0.25
