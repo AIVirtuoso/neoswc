@@ -1,3 +1,15 @@
+# Modifications copyright (c) 2026 neoswc contributors
+#
+# SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+#
+# The upstream content is MIT and stays that way -- it is not ours to
+# relicense. Modifications by the neoswc contributors are GPL-3.0-or-later;
+# see COPYING.
+#
+# This file was previously kept free of a GPL notice so the include_directories
+# fix below could be sent upstream. That is no longer a goal: the fork is
+# permanently separate and nothing here is destined for neuswc.
+
 install_headers('swc.h')
 
 libswc_src = files(

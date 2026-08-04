@@ -1,7 +1,9 @@
 project('swc', 'c',
   version: '0.0',
   meson_version: '>=1.7.99',
-  license: 'MIT',
+  # Mixed, and deliberately so: upstream neuswc files stay MIT because they are
+  # not ours to relicense, everything the fork adds is GPL-3.0-or-later.
+  license: 'MIT AND GPL-3.0-or-later',
   default_options: [
     'c_std=c11',
     'warning_level=1',
