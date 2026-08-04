@@ -40,6 +40,7 @@ static struct window windows[MAX_WINDOWS];
 static unsigned num_windows;
 static bool running = true;
 static bool clip_test;
+static bool csd_test;
 static bool content_clip_test;
 static bool clip_test_done;
 
@@ -234,6 +235,12 @@ manager_window(void *data, struct river_window_manager_v1 *proxy,
 	window->proxy = proxy_window;
 	window->node = river_window_v1_get_node(proxy_window);
 	river_window_v1_add_listener(proxy_window, &window_listener, window);
+	if (csd_test) {
+		/* Client-side decorations mean the client draws its own title bar and
+		 * borders, which clients do with subsurfaces -- the thing a clip test
+		 * needs present in order to check whether children are clipped. */
+		river_window_v1_use_csd(proxy_window);
+	}
 	say("new window (%u total)", num_windows);
 }
 
@@ -712,6 +719,14 @@ main(int argc, char *argv[])
 	clip_mode = getenv("NEOSWC_TEST_CLIP");
 	clip_test = clip_mode && strcmp(clip_mode, "full") == 0;
 	content_clip_test = clip_mode && strcmp(clip_mode, "content") == 0;
+
+	/*
+	 * Ask clients to decorate themselves. Without this swc's server-side
+	 * default wins whatever the client prefers, and a client like foot then
+	 * creates no subsurfaces at all -- so a clip test has nothing but the
+	 * toplevel to clip and cannot show whether children are clipped too.
+	 */
+	csd_test = getenv("NEOSWC_TEST_CSD") != NULL;
 
 	display = wl_display_connect(NULL);
 	if (!display) {

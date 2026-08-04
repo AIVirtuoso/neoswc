@@ -179,6 +179,18 @@ in
         say "installed fuzzel config ($(wc -l < /root/.config/fuzzel/fuzzel.ini) lines)"
       fi
 
+      # Force foot to draw its own decorations, which it does with subsurfaces
+      # (csd_instantiate() in its wayland.c) -- a title bar, buttons and borders,
+      # each its own wl_surface. With server-side decorations foot creates none,
+      # so nothing in a default run has a subsurface to clip and the gap is
+      # invisible. Combine with NEOSWC_TEST_CLIP to see it.
+      if [ -e /tmp/neoswc-vm-share/csd ]; then
+        export NEOSWC_TEST_CSD=1
+        mkdir -p /root/.config/foot
+        printf '[csd]\npreferred=client\n' > /root/.config/foot/foot.ini
+        say "foot: client-side decorations forced (subsurfaces)"
+      fi
+
       # river-wm-client clips its first window to 1x1 when this is set, so a
       # screendump against an unclipped baseline shows whether clipping reaches
       # the framebuffer at all.
@@ -309,6 +321,12 @@ in
         sleep 1
         say "wlr-randr apply: $(cat /tmp/wlrrandr.log | tr '\n' '|' | head -c 200)"
         say "wlr-randr after: $(wlr-randr 2>&1 | grep -i position | tr '\n' '|' | head -c 200)"
+        # Put it back. Leaving the screen at 300,150 offsets every screendump
+        # taken later in the run, which looks like a rendering fault in whatever
+        # is being tested next rather than like this check not cleaning up.
+        wlr-randr --output Virtual-1 --pos 0,0 >/dev/null 2>&1 || true
+        sleep 1
+        say "wlr-randr restored: $(wlr-randr 2>&1 | grep -i position | tr '\n' '|' | head -c 120)"
       fi
 
       # A solid-colour background layer surface. The compositor clears to black,
