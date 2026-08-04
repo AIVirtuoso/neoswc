@@ -8,6 +8,15 @@ foreach proto : [
   'swc_snap.xml',
   'swc_select.xml',
   'wlr-layer-shell-unstable-v1.xml',
+  # Screen capture. wayland-protocols ships these in staging; vendored so the
+  # build does not depend on the host's wayland-protocols version having them.
+  # Only for the interface symbols: ext-image-capture-source references
+  # ext_foreign_toplevel_handle_v1 in its per-toplevel source manager, so the
+  # generated table will not link without it. No global is created for it --
+  # per-window capture is not implemented, only whole-output.
+  'ext-foreign-toplevel-list-v1.xml',
+  'ext-image-capture-source-v1.xml',
+  'ext-image-copy-capture-v1.xml',
   # Vendored from wlr-protocols (MIT-style, Purism SPC). The only protocol
   # kanshi and wlr-randr speak; wayland-protocols has no output-management
   # equivalent, staging or otherwise. Our implementation of it is GPL.

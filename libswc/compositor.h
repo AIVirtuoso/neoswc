@@ -81,6 +81,22 @@ compositor_damage_all(void);
 void
 compositor_update_screens(void);
 
+/*
+ * Copy a screen's current composited contents into `dst`.
+ *
+ * Reads the shadow buffer, which is the image actually on screen -- blending
+ * included, and in cached memory. Deliberately not compositor_render_to_shm():
+ * that re-renders by walking views with wld_copy_rectangle and does no
+ * blending, so a translucent surface would come out as it did before alpha
+ * blending existed. A capture that does not match the screen is worse than no
+ * capture.
+ *
+ * Returns false if the screen has no target, no shadow, or the renderer cannot
+ * read one into the other.
+ */
+bool
+compositor_copy_screen(struct screen *screen, struct wld_buffer *dst);
+
 struct compositor_view {
 	struct view base;
 	struct surface *surface;

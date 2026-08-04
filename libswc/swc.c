@@ -32,6 +32,7 @@
 #include "keyboard.h"
 #include "launch.h"
 #include "layer_shell.h"
+#include "image_capture.h"
 #include "output_management.h"
 #include "panel_manager.h"
 #include "pointer.h"
@@ -286,6 +287,12 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error_output_management;
 	}
 
+	if (!image_capture_create(display, &swc.image_capture,
+	                          &swc.image_capture_source)) {
+		ERROR("Could not initialize image capture\n");
+		goto error_image_capture;
+	}
+
 	swc.select_manager = select_manager_create(display);
 	if (!swc.select_manager) {
 		ERROR("Could not initialize select manager\n");
@@ -298,6 +305,9 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 
 error17:
 	wl_global_destroy(swc.select_manager);
+error_image_capture:
+	wl_global_destroy(swc.image_capture_source);
+	wl_global_destroy(swc.image_capture);
 error_output_management:
 	wl_global_destroy(swc.output_management);
 #ifdef ENABLE_XWAYLAND
@@ -325,6 +335,8 @@ error7:
 error6:
 	screens_finalize();
 error_xdg_output:
+	wl_global_destroy(swc.image_capture_source);
+	wl_global_destroy(swc.image_capture);
 	wl_global_destroy(swc.xdg_output_manager);
 error5:
 	wl_global_destroy(swc.subcompositor);

@@ -25,6 +25,7 @@ libswc_src = files(
   'kde_decoration.c',
   'keyboard.c',
   'layer_shell.c',
+  'image_capture.c',
   'output_management.c',
   'launch.c',
   'mode.c',

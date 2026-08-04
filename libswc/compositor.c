@@ -933,6 +933,37 @@ compositor_damage_all(void)
 	schedule_updates(-1);
 }
 
+bool
+compositor_copy_screen(struct screen *screen, struct wld_buffer *dst)
+{
+	struct target *target = target_get(screen);
+	pixman_region32_t region;
+	bool ok = false;
+
+	if (!target || !target->shadow || !dst) {
+		return false;
+	}
+	if (dst->width != target->shadow_width ||
+	    dst->height != target->shadow_height) {
+		return false;
+	}
+	if (!(wld_capabilities(swc.shm->renderer, target->shadow) &
+	      WLD_CAPABILITY_READ)) {
+		return false;
+	}
+	if (!wld_set_target_buffer(swc.shm->renderer, dst)) {
+		return false;
+	}
+
+	pixman_region32_init_rect(&region, 0, 0, dst->width, dst->height);
+	wld_copy_region(swc.shm->renderer, target->shadow, 0, 0, &region);
+	wld_flush(swc.shm->renderer);
+	pixman_region32_fini(&region);
+	ok = true;
+
+	return ok;
+}
+
 void
 compositor_update_screens(void)
 {

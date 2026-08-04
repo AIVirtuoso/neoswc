@@ -89,6 +89,9 @@ in
     # compositor's black clear colour. Without one, anything the compositor
     # fails to paint is invisible against a black screen.
     pkgs.swaybg
+    # Screen capture, checked against QEMU's screendump. grim speaks both
+    # ext-image-copy-capture-v1 and zwlr-screencopy-v1.
+    pkgs.grim
   ];
 
   # swc-launch opens DRM devices and manages the VT, so it must be setuid.
@@ -134,6 +137,7 @@ in
       pkgs.wlr-randr
       pkgs.wayland-utils
       pkgs.swaybg
+      pkgs.grim
     ];
     script = ''
       OUT=/tmp/neoswc-vm-share/smoke.log
@@ -399,6 +403,21 @@ in
       sleep 4
       say "MARK two-windows (foot2: $(ps -eo comm | grep -c '^foot$') alive)"
       touch /tmp/neoswc-vm-share/mark-two
+
+      # Screen capture, checked against a source of truth the compositor has no
+      # hand in: QEMU reads the framebuffer from outside the guest entirely. The
+      # host screendumps at go-capture and compares. Nothing else in this project
+      # has an independent reference like this.
+      say "capture globals: $(wayland-info 2>/dev/null | grep -cE 'ext_image_copy_capture_manager_v1|zwlr_screencopy_manager_v1' || true)"
+      rm -f /tmp/neoswc-vm-share/capture.png
+      if grim /tmp/neoswc-vm-share/capture.png > /tmp/grim.log 2>&1; then
+        say "grim: captured $(stat -c %s /tmp/neoswc-vm-share/capture.png 2>/dev/null) bytes"
+      else
+        say "grim FAILED: $(tr '\n' '|' < /tmp/grim.log | head -c 200)"
+      fi
+      say "MARK capture"
+      touch /tmp/neoswc-vm-share/mark-capture
+      wait_host capture
 
       # Straggler path. Wedge a client with SIGSTOP so it cannot acknowledge,
       # then force a relayout by adding another window. The cohort must give up
