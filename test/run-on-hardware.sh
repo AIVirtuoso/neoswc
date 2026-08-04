@@ -109,9 +109,24 @@ echo '/tmp/neoswc-hw-core.%e.%p' > /proc/sys/kernel/core_pattern 2>/dev/null || 
 # XDG_RUNTIME_DIR when there is none -- running as your own user from a VT there
 # usually is one, and the socket lands there instead.
 RT="${XDG_RUNTIME_DIR:-/tmp/XDG_RUNTIME_DIR_$(id -u)}"
+
+# Which sockets already exist. Your own graphical session on another VT has one
+# sitting in this same directory, and picking "the first wayland-* we find" hands
+# every test client to *that* compositor instead of the one under test -- which
+# looks like a working run right up until you read which socket it used. Wait
+# for one that was not there before.
+PRE_SOCKS=$(ls "$RT"/wayland-* 2>/dev/null | grep -v '\.lock$' | sort | tr '\n' ' ')
+echo "sockets already present: ${PRE_SOCKS:-none}" >> "$LOG"
 (
 	for _ in $(seq 1 40); do
-		sock=$(ls "$RT"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+		sock=
+		for s in $(ls "$RT"/wayland-* 2>/dev/null | grep -v '\.lock$' | sort); do
+			case " $PRE_SOCKS " in
+			*" $s "*) continue ;;
+			esac
+			sock=$s
+			break
+		done
 		if [ -n "$sock" ]; then
 			export XDG_RUNTIME_DIR="$RT"
 			export WAYLAND_DISPLAY="$(basename "$sock")"
@@ -144,7 +159,7 @@ RT="${XDG_RUNTIME_DIR:-/tmp/XDG_RUNTIME_DIR_$(id -u)}"
 		fi
 		sleep 0.25
 	done
-	echo "no wayland socket appeared in $RT" >> "$LOG"
+	echo "no NEW wayland socket appeared in $RT (had: ${PRE_SOCKS:-none})" >> "$LOG"
 ) &
 
 case "$MODE" in
