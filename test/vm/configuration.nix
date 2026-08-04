@@ -440,6 +440,22 @@ in
         say "slurp FAILED: $(tr '\n' '|' < /tmp/slurp.log | head -c 200)"
       fi
 
+      # A client that outlives its own window: destroys an xdg_toplevel that
+      # still has a subsurface, then commits the surface again. swc finalized
+      # the window and set surface->view to NULL, but the wl_surface and its
+      # subsurface list belong to the client and survive -- so the commit
+      # walked the children and dereferenced the destroyed parent's view.
+      #
+      # This killed a real session when Discord and OBS were closed in quick
+      # succession, both being clients that decorate themselves with
+      # subsurfaces. foot never reproduced it: it destroys its surface and its
+      # toplevel together and does not commit in between.
+      if orphan-subsurface > /tmp/orphan.log 2>&1; then
+        say "orphan subsurface: $(tr '\n' '|' < /tmp/orphan.log | head -c 120)"
+      else
+        say "orphan subsurface CRASHED THE COMPOSITOR: $(tr '\n' '|' < /tmp/orphan.log | head -c 200)"
+      fi
+
       say "MARK capture"
       touch /tmp/neoswc-vm-share/mark-capture
       wait_host capture

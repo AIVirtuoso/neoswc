@@ -1910,9 +1910,31 @@ compositor_view_destroy(struct compositor_view *view)
 	free(view);
 }
 
+/*
+ * NULL in, NULL out.
+ *
+ * Every caller already tests the result -- but the test came *after* this
+ * dereferenced view->impl, so a NULL view was a segfault rather than the
+ * "not a compositor view" answer the callers were written to expect. One
+ * caller had already been patched at its own call site
+ * (subsurface_update_stacking, `parent->view ? ... : NULL`), which is the
+ * shape of a bug found once and fixed in the wrong place.
+ *
+ * A surface reaches here with no view routinely: compositor_view_destroy()
+ * calls surface_set_view(surface, NULL), so between a window being finalized
+ * and its client destroying the wl_surface, the surface object outlives its
+ * view. If that surface has subsurfaces, the next commit walks them -- and
+ * subsurface_update_visibility() reads the *parent's* view, which is the one
+ * now gone. Closing a window with client-side decorations while it still had
+ * a pending commit crashed the compositor exactly there.
+ */
 struct compositor_view *
 compositor_view(struct view *view)
 {
+	if (!view) {
+		return NULL;
+	}
+
 	return view->impl == &view_impl ? (struct compositor_view *)view : NULL;
 }
 

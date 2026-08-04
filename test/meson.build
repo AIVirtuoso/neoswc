@@ -20,3 +20,12 @@ river_wm_client = executable('river-wm-client',
   dependencies: [dependency('wayland-client')],
   install: true,
 )
+
+# Regression test for a compositor crash, so it also needs a running server.
+# Destroys an xdg_toplevel that still has a subsurface and commits afterwards,
+# which left swc dereferencing the destroyed parent's view.
+orphan_subsurface = executable('orphan-subsurface',
+  ['orphan_subsurface.c'] + protos['xdg-shell'],
+  dependencies: [dependency('wayland-client')],
+  install: true,
+)
