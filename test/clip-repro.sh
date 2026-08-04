@@ -158,11 +158,48 @@ for spec in "baseline client no" "clipped-csd client yes" "clipped-ssd server ye
 done
 
 # Label and stack the three, so the difference is one file rather than three.
-for f in baseline clipped-csd clipped-ssd; do
-	magick "$OUT/$f.png" -crop "${W}x400+0+0" +repage -resize 760x \
-		-gravity north -background '#111111' -splice 0x26 \
-		-gravity northwest -fill white -pointsize 16 \
-		-annotate +8+19 "$f" "$OUT/strip-$f.png" 2>/dev/null
+#
+# The labels carry the measurements, and the title band is outlined, because the
+# eye-catching difference between the first two frames is the title bar changing
+# from white to grey -- which is foot drawing it focused vs unfocused, varies
+# between runs, and means nothing. The decisive comparison is the second frame
+# against the third: same clip box, and only one of them still has a title bar.
+strip_label() {
+	case $1 in
+	baseline) echo "1  no clip: decorations and content both drawn" ;;
+	clipped-csd) echo "2  clipped, client-side decor: DECORATIONS SURVIVED ($2% bg), content gone ($3% bg)  <- BUG" ;;
+	clipped-ssd) echo "3  clipped, server-side decor: nothing survived ($2% bg, $3% bg)  <- control" ;;
+	esac
+}
+
+# Which font, if any. magick resolves fonts differently depending on how the
+# environment is set up, and a missing one aborts the whole command rather than
+# just dropping the text -- so pick one that exists, and if none does, draw the
+# strips unlabelled instead of producing no image at all.
+FONT=$(fc-match -f '%{file}' monospace 2>/dev/null)
+[ -n "${FONT:-}" ] && [ -r "$FONT" ] || FONT=
+
+for spec in "baseline $baseline_title $baseline_body" \
+	"clipped-csd $clipped_csd_title $clipped_csd_body" \
+	"clipped-ssd $clipped_ssd_title $clipped_ssd_body"; do
+	set -- $spec
+	# Order matters: caption band first, then the box, then the text with the
+	# stroke turned back off. Drawing the box before the splice puts it under
+	# the caption, and leaving -stroke set outlines the text in red.
+	if [ -n "$FONT" ]; then
+		magick "$OUT/$1.png" -crop "${W}x400+0+0" +repage -resize 900x \
+			-gravity north -background '#111111' -splice 0x22 \
+			-gravity northwest \
+			-fill none -stroke red -strokewidth 2 \
+			-draw "rectangle 2,24 897,46" \
+			-stroke none -fill white -font "$FONT" -pointsize 13 \
+			-annotate +6+16 "$(strip_label "$1" "$2" "$3")" \
+			"$OUT/strip-$1.png" 2>/dev/null
+	fi
+	[ -s "$OUT/strip-$1.png" ] || magick "$OUT/$1.png" \
+		-crop "${W}x400+0+0" +repage -resize 900x \
+		-fill none -stroke red -strokewidth 2 \
+		-draw "rectangle 2,2 897,24" "$OUT/strip-$1.png" 2>/dev/null
 done
 magick "$OUT"/strip-baseline.png "$OUT"/strip-clipped-csd.png \
 	"$OUT"/strip-clipped-ssd.png -append "$OUT/evidence.png" 2>/dev/null \
@@ -183,6 +220,11 @@ if [ "$clipped_csd_body" -ge 80 ] && [ "$clipped_csd_title" -lt 20 ]; then
 	echo "decorations. Same clip, same manager; the only difference from the"
 	echo "control is that the client drew its own decorations, i.e. created"
 	echo "subsurfaces. The box lives on the toplevel view and never reaches them."
+	echo
+	echo "Compare frames 2 and 3, not 1 and 2: both got the same clip box, and"
+	echo "only one still has a title bar. Frame 1 is just what unclipped looks"
+	echo "like. Ignore the title bar changing colour between 1 and 2 -- that is"
+	echo "focused vs unfocused, it varies between runs, and it means nothing."
 elif [ "$clipped_csd_body" -ge 80 ] && [ "$clipped_csd_title" -ge 80 ]; then
 	echo "BUG FIXED: the clip box removed the decorations along with the content."
 else
