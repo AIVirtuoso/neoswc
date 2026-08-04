@@ -27,7 +27,15 @@
 set -u
 
 MODE="${1:-wm}"
-LOG=/tmp/neoswc-hw.log
+# Per-uid, because an earlier run as root leaves /tmp/neoswc-hw.log owned by
+# root and every later run as your own user dies on it -- which reads as "the
+# script is broken" rather than as a stale file.
+LOG="/tmp/neoswc-hw-$(id -u).log"
+if [ -e "$LOG" ] && [ ! -w "$LOG" ]; then
+	echo "$LOG exists and is not writable by you (stale root-owned run?)." >&2
+	echo "remove it: sudo rm -f $LOG" >&2
+	exit 1
+fi
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 # Build from the working tree. A pinned store path used to live here, which

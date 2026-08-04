@@ -59,11 +59,57 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <wld/drm.h>
 #include <wld/wld.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #define DEFAULT_BG 0xff000000u
+
+/*
+ * Frame timing, gated on NEOSWC_FRAME_TIMING=1. Off by default and costing one
+ * getenv for the process; the point is to turn "extremely slow" into a number
+ * rather than to keep reasoning about which composite op ought to be expensive.
+ */
+static struct {
+	uint32_t copied_px, blended_px;
+} frame_stats;
+
+static bool
+frame_timing_enabled(void)
+{
+	static int enabled = -1;
+
+	if (enabled == -1) {
+		const char *v = getenv("NEOSWC_FRAME_TIMING");
+		enabled = v && *v && *v != '0';
+	}
+	return enabled;
+}
+
+static double
+frame_now(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+static uint32_t
+region_area(pixman_region32_t *region)
+{
+	pixman_box32_t *box;
+	int n;
+	uint32_t area = 0;
+
+	box = pixman_region32_rectangles(region, &n);
+	while (n--) {
+		area += (uint32_t)((box->x2 - box->x1) * (box->y2 - box->y1));
+		++box;
+	}
+	return area;
+}
 
 static inline int32_t
 clamp_i32(int64_t v)
@@ -97,6 +143,21 @@ struct target {
 	struct view *view;
 	struct view_handler view_handler;
 	uint32_t mask;
+
+	/*
+	 * Compositing scratch, the same size as the screen. Everything is drawn
+	 * here and the damaged part is copied to the scanout buffer once, so the
+	 * scanout is only ever written.
+	 *
+	 * This exists because reading it is ruinous. The scanout buffer is pinned
+	 * for display and CPU reads of it are uncached: blending one 380k-pixel
+	 * translucent window straight onto it measured 212 ms per frame, about
+	 * 7.6 MB/s, which locked the whole compositor for a second at a time.
+	 * The same blend into ordinary mapped memory is well under a millisecond.
+	 * A plain unpinned buffer is cached write-back and reads at ~15 GB/s.
+	 */
+	struct wld_buffer *shadow;
+	uint32_t shadow_width, shadow_height;
 
 	struct wl_listener screen_destroy_listener;
 };
@@ -154,6 +215,9 @@ handle_screen_destroy(struct wl_listener *listener, void *data)
 	struct target *target =
 	    wl_container_of(listener, target, screen_destroy_listener);
 
+	if (target->shadow) {
+		wld_buffer_unreference(target->shadow);
+	}
 	wld_destroy_surface(target->surface);
 	free(target);
 }
@@ -232,6 +296,9 @@ target_new(struct screen *screen)
 	target->view_handler.impl = &screen_view_handler;
 	wl_list_insert(&target->view->handlers, &target->view_handler.link);
 	target->current_buffer = NULL;
+	target->shadow = NULL;
+	target->shadow_width = 0;
+	target->shadow_height = 0;
 	target->mask = screen_mask(screen);
 
 	target->screen_destroy_listener.notify = &handle_screen_destroy;
@@ -336,10 +403,46 @@ repaint_view(struct target *target, struct compositor_view *view,
 		 * alpha to honour and the copy is cheaper, so it keeps the old path.
 		 */
 		if (view->buffer->format == WLD_FORMAT_ARGB8888) {
-			wld_blend_region(swc.drm->renderer, view->buffer,
-			                 buf_x - target_geom->x, buf_y - target_geom->y,
-			                 &buffer_damage);
+			pixman_region32_t opaque_part, blend_part;
+
+			/*
+			 * Blend only what is actually translucent: a client that
+			 * declares an opaque region -- foot does, and it still uses
+			 * ARGB buffers -- must keep the cheaper copy path.
+			 *
+			 * Both regions are in buffer coordinates here, which is what
+			 * surface->state.opaque is in.
+			 */
+			pixman_region32_init(&opaque_part);
+			pixman_region32_init(&blend_part);
+			pixman_region32_intersect(&opaque_part, &buffer_damage,
+			                          &view->surface->state.opaque);
+			pixman_region32_subtract(&blend_part, &buffer_damage,
+			                         &view->surface->state.opaque);
+
+			if (pixman_region32_not_empty(&opaque_part)) {
+				if (frame_timing_enabled()) {
+					frame_stats.copied_px += region_area(&opaque_part);
+				}
+				wld_copy_region(swc.drm->renderer, view->buffer,
+				                buf_x - target_geom->x,
+				                buf_y - target_geom->y, &opaque_part);
+			}
+			if (pixman_region32_not_empty(&blend_part)) {
+				if (frame_timing_enabled()) {
+					frame_stats.blended_px += region_area(&blend_part);
+				}
+				wld_blend_region(swc.drm->renderer, view->buffer,
+				                 buf_x - target_geom->x,
+				                 buf_y - target_geom->y, &blend_part);
+			}
+
+			pixman_region32_fini(&opaque_part);
+			pixman_region32_fini(&blend_part);
 		} else {
+			if (frame_timing_enabled()) {
+				frame_stats.copied_px += region_area(&buffer_damage);
+			}
 			wld_copy_region(swc.drm->renderer, view->buffer,
 			                buf_x - target_geom->x, buf_y - target_geom->y,
 			                &buffer_damage);
@@ -450,6 +553,37 @@ draw_overlays(struct wld_renderer *renderer, const struct swc_rectangle *target_
 #undef CLAMP_LOW
 }
 
+/*
+ * The scratch buffer to composite into, grown to the screen. Returns NULL if it
+ * cannot be had, in which case the caller draws straight to the scanout as it
+ * always used to -- correct, just slow for anything translucent.
+ */
+static struct wld_buffer *
+target_shadow(struct target *target, uint32_t width, uint32_t height)
+{
+	if (target->shadow && (target->shadow_width != width ||
+	                       target->shadow_height != height)) {
+		wld_buffer_unreference(target->shadow);
+		target->shadow = NULL;
+	}
+
+	if (!target->shadow) {
+		/* No SCANOUT flag: this must never be pinned for display, since
+		 * being unpinned is exactly what makes it cheap to read. */
+		target->shadow = wld_create_buffer(swc.drm->context, width, height,
+		                                   WLD_FORMAT_XRGB8888, WLD_FLAG_MAP);
+		if (!target->shadow) {
+			return NULL;
+		}
+		target->shadow_width = width;
+		target->shadow_height = height;
+		/* It needs no priming: only the region painted this frame is copied
+		 * out of it, so its contents outside that region are never read. */
+	}
+
+	return target->shadow;
+}
+
 static void
 renderer_repaint(struct target *target, pixman_region32_t *damage,
                  pixman_region32_t *base_damage, struct wl_list *views,
@@ -457,12 +591,18 @@ renderer_repaint(struct target *target, pixman_region32_t *damage,
 {
 	struct compositor_view *view;
 	const struct swc_rectangle *target_geom = &target->view->geometry;
+	struct wld_buffer *shadow;
 
 	DEBUG("Rendering to target { x: %d, y: %d, w: %u, h: %u }\n",
 	      target->view->geometry.x, target->view->geometry.y,
 	      target->view->geometry.width, target->view->geometry.height);
 
-	wld_set_target_surface(swc.drm->renderer, target->surface);
+	shadow = target_shadow(target, target_geom->width, target_geom->height);
+	if (shadow) {
+		wld_set_target_buffer(swc.drm->renderer, shadow);
+	} else {
+		wld_set_target_surface(swc.drm->renderer, target->surface);
+	}
 
 	if (pixman_region32_not_empty(base_damage)) {
 		pixman_region32_translate(base_damage, -target->view->geometry.x,
@@ -479,6 +619,21 @@ renderer_repaint(struct target *target, pixman_region32_t *damage,
 	}
 
 	draw_overlays(swc.drm->renderer, target_geom);
+
+	if (shadow) {
+		pixman_region32_t local;
+
+		wld_flush(swc.drm->renderer);
+
+		/* The one touch the scanout gets, and it is write-only. `damage` is
+		 * global; the renderer works in target-local coordinates. */
+		pixman_region32_init(&local);
+		pixman_region32_copy(&local, damage);
+		pixman_region32_translate(&local, -target_geom->x, -target_geom->y);
+		wld_set_target_surface(swc.drm->renderer, target->surface);
+		wld_copy_region(swc.drm->renderer, shadow, 0, 0, &local);
+		pixman_region32_fini(&local);
+	}
 
 	wld_flush(swc.drm->renderer);
 }
@@ -2069,12 +2224,27 @@ update_screen(struct screen *screen)
 		wld_buffer_unreference(zoomed);
 	} else {
 		pixman_region32_t base_damage;
+		double t_repaint = 0.0;
+
 		pixman_region32_copy(&damage, total_damage);
 		pixman_region32_translate(&damage, geom->x, geom->y);
 		pixman_region32_init(&base_damage);
 		pixman_region32_subtract(&base_damage, &damage, &compositor.opaque);
+		if (frame_timing_enabled()) {
+			frame_stats.copied_px = 0;
+			frame_stats.blended_px = 0;
+			t_repaint = frame_now();
+		}
 		renderer_repaint(target, &damage, &base_damage, &compositor.views,
 		                 screen);
+		if (frame_timing_enabled()) {
+			t_repaint = frame_now() - t_repaint;
+			fprintf(stderr,
+			        "neoswc: frame repaint %6.2f ms  damage %7u px  "
+			        "copied %7u px  blended %7u px\n",
+			        t_repaint * 1e3, region_area(&damage),
+			        frame_stats.copied_px, frame_stats.blended_px);
+		}
 		pixman_region32_fini(&damage);
 		pixman_region32_fini(&base_damage);
 	}
