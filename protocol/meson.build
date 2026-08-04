@@ -17,6 +17,13 @@ foreach proto : [
   'ext-foreign-toplevel-list-v1.xml',
   'ext-image-capture-source-v1.xml',
   'ext-image-copy-capture-v1.xml',
+  # The clipboard protocol for programs that are not the focused window:
+  # clipboard managers, wl-paste, and every clipboard library that wraps them.
+  # wl_data_device only ever hands the selection to the client with keyboard
+  # focus, which such a program never has. Vendored for the same reason as the
+  # capture protocols -- it is staging, so the host's wayland-protocols may be
+  # too old to have it.
+  'ext-data-control-v1.xml',
   # Vendored from wlr-protocols (MIT-style, Purism SPC). The only protocol
   # kanshi and wlr-randr speak; wayland-protocols has no output-management
   # equivalent, staging or otherwise. Our implementation of it is GPL.

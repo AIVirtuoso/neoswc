@@ -2,6 +2,13 @@
  *
  * Copyright (c) 2013-2020 Michael Forney
  *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -24,14 +31,34 @@
 #include "data.h"
 #include "util.h"
 
+#include "ext-data-control-v1-server-protocol.h"
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <wayland-server.h>
 
+/*
+ * One struct backs both kinds of selection source.
+ *
+ * ext_data_control_source_v1 is a different interface from wl_data_source, but
+ * it holds exactly the same thing: a list of MIME types and a way to be asked
+ * for the bytes. Giving them one representation is what lets a selection set
+ * through either protocol be read through the other, which is the whole point
+ * of data-control -- and it costs one enum, rather than an abstract source type
+ * threaded through data_device.c, seat.c and every caller.
+ */
+enum source_kind {
+	SOURCE_WL_DATA,      /* wl_data_source */
+	SOURCE_DATA_CONTROL, /* ext_data_control_source_v1 */
+};
+
 struct data {
 	struct wl_array mime_types;
 	struct wl_resource *source;
+	enum source_kind kind;
+	/* A data-control source may be handed to set_selection only once. */
+	bool used;
 	struct wl_list offers;
 };
 
@@ -46,7 +73,29 @@ offer_accept(struct wl_client *client, struct wl_resource *offer,
 		return;
 	}
 
-	wl_data_source_send_target(data->source, mime_type);
+	/* Drag-and-drop feedback; ext_data_control_source_v1 has no equivalent
+	 * event, and a clipboard read has nothing to accept anyway. */
+	if (data->kind == SOURCE_WL_DATA) {
+		wl_data_source_send_target(data->source, mime_type);
+	}
+}
+
+/*
+ * Ask the source for the bytes, whichever protocol it came from.
+ *
+ * Takes ownership of fd. The source hands it to its own client, which writes
+ * and closes it; this end closes its copy immediately, so the reader sees EOF
+ * when the writer is done rather than hanging on a descriptor we forgot.
+ */
+static void
+source_send(struct data *data, const char *mime_type, int fd)
+{
+	if (data->kind == SOURCE_DATA_CONTROL) {
+		ext_data_control_source_v1_send_send(data->source, mime_type, fd);
+	} else {
+		wl_data_source_send_send(data->source, mime_type, fd);
+	}
+	close(fd);
 }
 
 static void
@@ -57,11 +106,11 @@ offer_receive(struct wl_client *client, struct wl_resource *offer,
 
 	/* Protect against expired data_offers being used. */
 	if (!data) {
+		close(fd);
 		return;
 	}
 
-	wl_data_source_send_send(data->source, mime_type, fd);
-	close(fd);
+	source_send(data, mime_type, fd);
 }
 
 static void
@@ -129,6 +178,36 @@ static const struct wl_data_source_interface data_source_impl = {
 	.set_actions = source_set_actions,
 };
 
+/* Same two requests, same handlers -- ext_data_control_source_v1 is
+ * wl_data_source without the drag-and-drop half. */
+static const struct ext_data_control_source_v1_interface
+    data_control_source_impl = {
+        .offer = source_offer,
+        .destroy = destroy_resource,
+};
+
+static void
+data_control_offer_receive(struct wl_client *client, struct wl_resource *offer,
+                           const char *mime_type, int fd)
+{
+	struct data *data = wl_resource_get_user_data(offer);
+
+	(void)client;
+
+	if (!data) {
+		close(fd);
+		return;
+	}
+
+	source_send(data, mime_type, fd);
+}
+
+static const struct ext_data_control_offer_v1_interface
+    data_control_offer_impl = {
+        .receive = data_control_offer_receive,
+        .destroy = destroy_resource,
+};
+
 static void
 data_destroy(struct wl_resource *source)
 {
@@ -156,17 +235,32 @@ data_destroy(struct wl_resource *source)
 	free(data);
 }
 
-struct wl_resource *
-data_source_new(struct wl_client *client, uint32_t version, uint32_t id)
+static struct data *
+data_new(void)
 {
 	struct data *data;
 
 	data = malloc(sizeof(*data));
 	if (!data) {
-		goto error0;
+		return NULL;
 	}
 	wl_array_init(&data->mime_types);
 	wl_list_init(&data->offers);
+	data->kind = SOURCE_WL_DATA;
+	data->used = false;
+
+	return data;
+}
+
+struct wl_resource *
+data_source_new(struct wl_client *client, uint32_t version, uint32_t id)
+{
+	struct data *data;
+
+	data = data_new();
+	if (!data) {
+		goto error0;
+	}
 
 	data->source =
 	    wl_resource_create(client, &wl_data_source_interface, version, id);
@@ -175,6 +269,33 @@ data_source_new(struct wl_client *client, uint32_t version, uint32_t id)
 	}
 	wl_resource_set_implementation(data->source, &data_source_impl, data,
 	                               &data_destroy);
+
+	return data->source;
+
+error1:
+	free(data);
+error0:
+	return NULL;
+}
+
+struct wl_resource *
+data_control_source_new(struct wl_client *client, uint32_t version, uint32_t id)
+{
+	struct data *data;
+
+	data = data_new();
+	if (!data) {
+		goto error0;
+	}
+	data->kind = SOURCE_DATA_CONTROL;
+
+	data->source = wl_resource_create(
+	    client, &ext_data_control_source_v1_interface, version, id);
+	if (!data->source) {
+		goto error1;
+	}
+	wl_resource_set_implementation(data->source, &data_control_source_impl,
+	                               data, &data_destroy);
 
 	return data->source;
 
@@ -210,4 +331,73 @@ data_send_mime_types(struct wl_resource *source, struct wl_resource *offer)
 
 	wl_array_for_each(mime_type, &data->mime_types)
 	    wl_data_offer_send_offer(offer, *mime_type);
+}
+
+struct wl_resource *
+data_control_offer_new(struct wl_client *client, struct wl_resource *source,
+                       uint32_t version)
+{
+	struct data *data = wl_resource_get_user_data(source);
+	struct wl_resource *offer;
+
+	offer = wl_resource_create(client, &ext_data_control_offer_v1_interface,
+	                           version, 0);
+	if (!offer) {
+		return NULL;
+	}
+	wl_resource_set_implementation(offer, &data_control_offer_impl, data,
+	                               &remove_resource);
+	/* The same list data_destroy() walks to blank expired offers, which it
+	 * does by resource id and so does not care which interface they are. */
+	wl_list_insert(&data->offers, wl_resource_get_link(offer));
+
+	return offer;
+}
+
+void
+data_control_send_mime_types(struct wl_resource *source,
+                             struct wl_resource *offer)
+{
+	struct data *data = wl_resource_get_user_data(source);
+	char **mime_type;
+
+	wl_array_for_each(mime_type, &data->mime_types)
+	    ext_data_control_offer_v1_send_offer(offer, *mime_type);
+}
+
+/*
+ * Tell a source it is no longer the selection.
+ *
+ * data_device.c used to call wl_data_source_send_cancelled() directly, which
+ * would be a wrong-interface event once a data-control source can hold the
+ * selection -- libwayland would send the wl_data_source opcode to an
+ * ext_data_control_source_v1 object and the client would abort.
+ */
+void
+data_source_cancel(struct wl_resource *source)
+{
+	struct data *data = wl_resource_get_user_data(source);
+
+	if (!data) {
+		return;
+	}
+
+	if (data->kind == SOURCE_DATA_CONTROL) {
+		ext_data_control_source_v1_send_cancelled(source);
+	} else {
+		wl_data_source_send_cancelled(source);
+	}
+}
+
+bool
+data_source_mark_used(struct wl_resource *source)
+{
+	struct data *data = wl_resource_get_user_data(source);
+
+	if (!data || data->used) {
+		return false;
+	}
+	data->used = true;
+
+	return true;
 }

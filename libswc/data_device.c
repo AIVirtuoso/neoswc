@@ -35,19 +35,25 @@ start_drag(struct wl_client *client, struct wl_resource *resource,
 	/* XXX: Implement */
 }
 
-static void
-set_selection(struct wl_client *client, struct wl_resource *resource,
-              struct wl_resource *data_source, uint32_t serial)
+/*
+ * Take a new selection, whichever protocol asked for it.
+ *
+ * Split out of the wl_data_device request handler so ext-data-control can
+ * reach it: a data-control client sets the selection without keyboard focus
+ * and without a wl_data_device of its own, but the selection it sets is the
+ * same one, and there is exactly one of it.
+ */
+void
+data_device_set_selection(struct data_device *data_device,
+                          struct wl_resource *data_source)
 {
-	struct data_device *data_device = wl_resource_get_user_data(resource);
-
 	/* Check if this data source is already the current selection. */
 	if (data_source == data_device->selection) {
 		return;
 	}
 
 	if (data_device->selection) {
-		wl_data_source_send_cancelled(data_device->selection);
+		data_source_cancel(data_device->selection);
 		wl_list_remove(&data_device->selection_destroy_listener.link);
 	}
 
@@ -60,6 +66,17 @@ set_selection(struct wl_client *client, struct wl_resource *resource,
 
 	send_event(&data_device->event_signal, DATA_DEVICE_EVENT_SELECTION_CHANGED,
 	           NULL);
+}
+
+static void
+set_selection(struct wl_client *client, struct wl_resource *resource,
+              struct wl_resource *data_source, uint32_t serial)
+{
+	(void)client;
+	(void)serial;
+
+	data_device_set_selection(wl_resource_get_user_data(resource),
+	                          data_source);
 }
 
 static const struct wl_data_device_interface data_device_impl = {

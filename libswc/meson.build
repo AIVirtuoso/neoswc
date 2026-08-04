@@ -18,6 +18,7 @@ libswc_src = files(
   'data.c',
   'data_device.c',
   'data_device_manager.c',
+  'data_control.c',
   'decor.c',
   'dmabuf.c',
   'drm.c',

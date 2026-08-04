@@ -93,6 +93,10 @@ in
     # ext-image-copy-capture-v1 and zwlr-screencopy-v1.
     pkgs.grim
     pkgs.slurp
+    # The clipboard, and the reason ext-data-control-v1 exists: wl-paste
+    # cannot read the selection through wl_data_device at all, since it has no
+    # window and so never holds keyboard focus.
+    pkgs.wl-clipboard
   ];
 
   # swc-launch opens DRM devices and manages the VT, so it must be setuid.
@@ -140,6 +144,7 @@ in
       pkgs.swaybg
       pkgs.grim
       pkgs.slurp
+      pkgs.wl-clipboard
     ];
     script = ''
       OUT=/tmp/neoswc-vm-share/smoke.log
@@ -439,6 +444,28 @@ in
       else
         say "slurp FAILED: $(tr '\n' '|' < /tmp/slurp.log | head -c 200)"
       fi
+
+      # The clipboard, through ext-data-control-v1. wl-copy can fall back to
+      # wl_data_device with a surface of its own, but wl-paste cannot: it has no
+      # window, so it never holds keyboard focus, and wl_data_device only ever
+      # offers the selection to the focused client. Without data-control it
+      # reports "The compositor does not seem to implement ..." and exits.
+      #
+      # Both directions matter, because there is one selection shared between
+      # the two protocols and either could have been wired up alone:
+      #   round trip  -- data-control writes, data-control reads
+      #   cross read  -- data-control writes, a focused wl_data_device client
+      #                  can be offered it (checked by the mime type surviving)
+      say "clipboard globals: $(wayland-info 2>/dev/null | grep -c 'ext_data_control_manager_v1' || true)"
+      printf 'neoswc-clipboard-probe' | wl-copy > /tmp/wlcopy.log 2>&1 || true
+      sleep 1
+      got=$(wl-paste --no-newline 2>/tmp/wlpaste.log || true)
+      if [ "$got" = "neoswc-clipboard-probe" ]; then
+        say "clipboard: round trip OK"
+      else
+        say "clipboard FAILED: got '$got'; $(tr '\n' '|' < /tmp/wlpaste.log | head -c 200)"
+      fi
+      say "clipboard types: $(wl-paste --list-types 2>&1 | tr '\n' ',' | head -c 120)"
 
       # A client that outlives its own window: destroys an xdg_toplevel that
       # still has a subsurface, then commits the surface again. swc finalized

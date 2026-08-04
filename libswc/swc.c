@@ -31,6 +31,7 @@
 #include "swc.h"
 #include "bindings.h"
 #include "compositor.h"
+#include "data_control.h"
 #include "data_device_manager.h"
 #include "drm.h"
 #include "event.h"
@@ -286,6 +287,14 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error_image_capture;
 	}
 
+	/* After seat_create(): the device object hangs off the seat's one
+	 * data_device, which is where the single selection lives. */
+	swc.data_control = data_control_create(display);
+	if (!swc.data_control) {
+		ERROR("Could not initialize data control\n");
+		goto error_data_control;
+	}
+
 	swc.select_manager = select_manager_create(display);
 	if (!swc.select_manager) {
 		ERROR("Could not initialize select manager\n");
@@ -298,6 +307,8 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 
 error17:
 	wl_global_destroy(swc.select_manager);
+error_data_control:
+	wl_global_destroy(swc.data_control);
 error_image_capture:
 	wl_global_destroy(swc.image_capture_source);
 	wl_global_destroy(swc.image_capture);
@@ -354,6 +365,7 @@ swc_finalize(void)
 	wl_global_destroy(swc.xdg_output_manager);
 	wl_global_destroy(swc.output_management);
 	wl_global_destroy(swc.snap_manager);
+	wl_global_destroy(swc.data_control);
 	wl_global_destroy(swc.select_manager);
 	wl_global_destroy(swc.panel_manager);
 	wl_global_destroy(swc.layer_shell);

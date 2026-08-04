@@ -50,6 +50,7 @@
 #include "data_control.h"
 #include "data.h"
 #include "data_device.h"
+#include "event.h"
 #include "internal.h"
 #include "seat.h"
 #include "util.h"

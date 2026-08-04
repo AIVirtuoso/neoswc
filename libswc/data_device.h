@@ -48,5 +48,8 @@ data_device_bind(struct data_device *data_device, struct wl_client *client,
 void
 data_device_offer_selection(struct data_device *data_device,
                             struct wl_client *client);
+void
+data_device_set_selection(struct data_device *data_device,
+                          struct wl_resource *data_source);
 
 #endif
