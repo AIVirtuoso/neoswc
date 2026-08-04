@@ -323,8 +323,27 @@ repaint_view(struct target *target, struct compositor_view *view,
 		pixman_region32_translate(&buffer_damage,
 		                          -geom->x + view->buffer_offset_x,
 		                          -geom->y + view->buffer_offset_y);
-		wld_copy_region(swc.drm->renderer, view->buffer, buf_x - target_geom->x,
-		                buf_y - target_geom->y, &buffer_damage);
+		/*
+		 * A buffer with an alpha channel has to be blended. Copying it writes
+		 * its premultiplied colour straight into the target, so a translucent
+		 * surface comes out as if it were over black rather than over what is
+		 * actually behind it.
+		 *
+		 * Safe to do unconditionally for ARGB: views are painted back to front
+		 * (see renderer_repaint), the exposed background is filled first, and a
+		 * translucent surface declares no opaque region, so whatever is under
+		 * it has already been drawn into this same damage region. XRGB has no
+		 * alpha to honour and the copy is cheaper, so it keeps the old path.
+		 */
+		if (view->buffer->format == WLD_FORMAT_ARGB8888) {
+			wld_blend_region(swc.drm->renderer, view->buffer,
+			                 buf_x - target_geom->x, buf_y - target_geom->y,
+			                 &buffer_damage);
+		} else {
+			wld_copy_region(swc.drm->renderer, view->buffer,
+			                buf_x - target_geom->x, buf_y - target_geom->y,
+			                &buffer_damage);
+		}
 	}
 
 	pixman_region32_fini(&view_damage);

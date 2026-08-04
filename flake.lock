@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "neowld": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785823250,
+        "narHash": "sha256-AMGdYl/jX8gCmBY4hYmLXKH8diVatLcr/LzImFSNMG8=",
+        "owner": "AIVirtuoso",
+        "repo": "neowld",
+        "rev": "ddeacaf8a844907514ec3d853aa01bec15397562",
+        "type": "github"
+      },
+      "original": {
+        "owner": "AIVirtuoso",
+        "repo": "neowld",
+        "type": "github"
+      }
+    },
     "neu-nix": {
       "inputs": {
         "nixpkgs": [
@@ -39,6 +55,7 @@
     },
     "root": {
       "inputs": {
+        "neowld": "neowld",
         "neu-nix": "neu-nix",
         "nixpkgs": "nixpkgs"
       }

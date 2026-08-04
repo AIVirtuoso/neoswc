@@ -12,10 +12,18 @@
       url = "github:ricardomaps/neu-nix/8078f344b0e95c5719f692396d7b4fe01a0d51bd";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    neowld = {
+      # Our neuwld fork. It adds wld_blend_region(); see "Alpha blending" in
+      # the neoswc notes for why swc cannot draw a translucent surface without
+      # it. Source only -- the derivation below is neu-nix's, with the src
+      # swapped, so the build stays identical to upstream's.
+      url = "github:AIVirtuoso/neowld";
+      flake = false;
+    };
   };
 
   outputs =
-    { self, nixpkgs, neu-nix }:
+    { self, nixpkgs, neu-nix, neowld }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
@@ -23,9 +31,30 @@
         overlays = [ neu-nix.overlays.default ];
       };
 
+      # Upstream wld composites every surface with PIXMAN_OP_SRC and exposes no
+      # blend entry point, so a translucent surface is copied verbatim and
+      # lands as its premultiplied colour -- a 90%-opaque dark window comes out
+      # solid black. Our fork adds wld_blend_region(), which compositor.c picks
+      # for ARGB buffers.
+      #
+      # Only the source is swapped; the derivation stays neu-nix's, so the
+      # build matches upstream's exactly.
+      #
+      # Passed with .override rather than through an overlay: neu-nix builds
+      # its packages in a lib.makeScope, so neuswc resolves neuwld from that
+      # scope and never sees a top-level pkgs.neuwld replacement -- an overlay
+      # evaluates, builds, and silently changes nothing.
+      wld = pkgs.neuwld.overrideAttrs (_: {
+        pname = "neowld";
+        src = neowld;
+      });
+
       # Our fork, built by upstream's own derivation with the source swapped.
       # example=true builds example/wm, the test compositor the VM runs.
-      neoswc = (pkgs.neuswc.override { example = true; }).overrideAttrs (old: {
+      neoswc = (pkgs.neuswc.override {
+        example = true;
+        neuwld = wld;
+      }).overrideAttrs (old: {
         pname = "neoswc";
         src = self;
 
