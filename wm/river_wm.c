@@ -79,9 +79,16 @@ static struct {
 	struct wl_global *layer_shell_global;
 	struct wl_global *xkb_bindings_global;
 	struct swc_screen *screen;
+
+	/* Key bindings, matched here rather than by swc. See binding_register(). */
+	struct wl_list key_bindings;
+	struct wl_resource *xkb_seat; /* river_xkb_bindings_seat_v1, or NULL */
+	bool eat_next_key;
+	uint32_t watched_modifiers; /* swc encoding */
 } wm;
 
 static void schedule_sequence(void);
+static void ensure_keyboard_observer(void);
 static void maybe_free_window(struct river_window *window);
 
 /* ----------------------------------------------------------------- inert */
@@ -514,7 +521,17 @@ struct river_binding {
 	enum swc_binding_type type;
 	uint32_t keysym; /* or button code, for SWC_BINDING_BUTTON */
 	uint32_t modifiers; /* swc's encoding, already translated */
-	bool registered;
+	bool registered; /* pointer bindings only: handed to swc_add_binding */
+	struct wl_list link; /* key bindings only: on wm.key_bindings */
+
+	/* Key bindings match here rather than in swc, so the state lives here. */
+	bool enabled;
+	bool has_layout_override;
+	uint32_t layout;
+	/* Which keycode is currently holding this binding down, so the release
+	 * can be routed back to it and stop_repeat can find it. */
+	bool held;
+	uint32_t held_keycode;
 };
 
 /*
@@ -536,10 +553,20 @@ struct river_binding {
  * gives no way to do), so a press and its release can both arrive before the
  * next flush. A queue keeps them in order and keeps them both.
  */
+enum binding_event_kind {
+	BINDING_EVENT_PRESSED,
+	BINDING_EVENT_RELEASED,
+	BINDING_EVENT_STOP_REPEAT,
+	BINDING_EVENT_ATE_UNBOUND,
+	BINDING_EVENT_MODIFIERS,
+};
+
 struct binding_event {
 	struct wl_list link;
-	struct river_binding *binding;
+	enum binding_event_kind kind;
+	struct river_binding *binding; /* NULL for seat-wide events */
 	uint32_t state;
+	uint32_t previous, current; /* BINDING_EVENT_MODIFIERS */
 };
 
 static struct wl_list pending_binding_events;
@@ -576,11 +603,59 @@ modifiers_to_swc(uint32_t modifiers)
 	return result;
 }
 
+/* The reverse, for modifiers_update, which reports state rather than matching. */
+static uint32_t
+modifiers_to_river(uint32_t modifiers)
+{
+	uint32_t result = 0;
+
+	if (modifiers & SWC_MOD_SHIFT) {
+		result |= RIVER_SEAT_V1_MODIFIERS_SHIFT;
+	}
+	if (modifiers & SWC_MOD_CTRL) {
+		result |= RIVER_SEAT_V1_MODIFIERS_CTRL;
+	}
+	if (modifiers & SWC_MOD_ALT) {
+		result |= RIVER_SEAT_V1_MODIFIERS_MOD1;
+	}
+	if (modifiers & SWC_MOD_LOGO) {
+		result |= RIVER_SEAT_V1_MODIFIERS_MOD4;
+	}
+	if (modifiers & SWC_MOD_MOD3) {
+		result |= RIVER_SEAT_V1_MODIFIERS_MOD3;
+	}
+	if (modifiers & SWC_MOD_MOD5) {
+		result |= RIVER_SEAT_V1_MODIFIERS_MOD5;
+	}
+
+	return result;
+}
+
+/* Queue an event for the flush that happens immediately before manage_start. */
+static void
+queue_binding_event(enum binding_event_kind kind, struct river_binding *binding,
+                    uint32_t state, uint32_t previous, uint32_t current)
+{
+	struct binding_event *event;
+
+	if (!(event = calloc(1, sizeof(*event)))) {
+		return;
+	}
+	event->kind = kind;
+	event->binding = binding;
+	event->state = state;
+	event->previous = previous;
+	event->current = current;
+	wl_list_insert(pending_binding_events.prev, &event->link);
+
+	schedule_sequence();
+}
+
+/* Pointer bindings only; key bindings are matched in binding_observe_key(). */
 static void
 binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 {
 	struct river_binding *binding = data;
-	struct binding_event *event;
 
 	(void)time;
 	(void)value;
@@ -593,15 +668,8 @@ binding_pressed(void *data, uint32_t time, uint32_t value, uint32_t state)
 		return;
 	}
 
-	event = calloc(1, sizeof(*event));
-	if (!event) {
-		return;
-	}
-	event->binding = binding;
-	event->state = state;
-	wl_list_insert(pending_binding_events.prev, &event->link);
-
-	schedule_sequence();
+	queue_binding_event(state ? BINDING_EVENT_PRESSED : BINDING_EVENT_RELEASED,
+	                    binding, state, 0, 0);
 }
 
 /* Drained at the top of a sequence, immediately before manage_start. */
@@ -613,18 +681,46 @@ flush_binding_events(void)
 	wl_list_for_each_safe (event, tmp, &pending_binding_events, link) {
 		struct river_binding *binding = event->binding;
 
-		if (binding->resource) {
+		switch (event->kind) {
+		case BINDING_EVENT_PRESSED:
+		case BINDING_EVENT_RELEASED:
+			if (!binding || !binding->resource) {
+				break;
+			}
 			if (binding->type == SWC_BINDING_BUTTON) {
-				if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+				if (event->kind == BINDING_EVENT_PRESSED) {
 					river_pointer_binding_v1_send_pressed(binding->resource);
 				} else {
 					river_pointer_binding_v1_send_released(binding->resource);
 				}
-			} else if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+			} else if (event->kind == BINDING_EVENT_PRESSED) {
 				river_xkb_binding_v1_send_pressed(binding->resource);
 			} else {
 				river_xkb_binding_v1_send_released(binding->resource);
 			}
+			break;
+		case BINDING_EVENT_STOP_REPEAT:
+			if (binding && binding->resource &&
+			    wl_resource_get_version(binding->resource) >=
+			        RIVER_XKB_BINDING_V1_STOP_REPEAT_SINCE_VERSION) {
+				river_xkb_binding_v1_send_stop_repeat(binding->resource);
+			}
+			break;
+		case BINDING_EVENT_ATE_UNBOUND:
+			if (wm.xkb_seat &&
+			    wl_resource_get_version(wm.xkb_seat) >=
+			        RIVER_XKB_BINDINGS_SEAT_V1_ATE_UNBOUND_KEY_SINCE_VERSION) {
+				river_xkb_bindings_seat_v1_send_ate_unbound_key(wm.xkb_seat);
+			}
+			break;
+		case BINDING_EVENT_MODIFIERS:
+			if (wm.xkb_seat &&
+			    wl_resource_get_version(wm.xkb_seat) >=
+			        RIVER_XKB_BINDINGS_SEAT_V1_MODIFIERS_UPDATE_SINCE_VERSION) {
+				river_xkb_bindings_seat_v1_send_modifiers_update(
+				    wm.xkb_seat, event->previous, event->current);
+			}
+			break;
 		}
 
 		wl_list_remove(&event->link);
@@ -646,10 +742,31 @@ drop_binding_events(struct river_binding *binding)
 	}
 }
 
+/*
+ * Key bindings are matched here rather than by swc.
+ *
+ * swc_add_binding() compares the active modifiers for exact equality against a
+ * keysym resolved in the active layout. That cannot express set_layout_override,
+ * cannot subtract consumed modifiers, and never reports a key it did not claim
+ * -- which stop_repeat, ensure_next_key_eaten and ate_unbound_key all need. So
+ * key bindings live in wm.key_bindings and are matched against the raw event.
+ *
+ * Pointer bindings still go through swc_add_binding(): none of the above
+ * applies to a button, and swc has no equivalent observer for the pointer.
+ */
 static void
 binding_register(struct river_binding *binding)
 {
 	int ret;
+
+	if (binding->type == SWC_BINDING_KEY) {
+		binding->enabled = true;
+		ensure_keyboard_observer();
+		fprintf(stderr,
+		        "neoswc: key binding enabled: keysym 0x%x, swc modifiers 0x%x\n",
+		        binding->keysym, binding->modifiers);
+		return;
+	}
 
 	if (binding->registered) {
 		return;
@@ -662,21 +779,168 @@ binding_register(struct river_binding *binding)
 	 * compositor that is not receiving input, so say what was asked for and
 	 * whether swc took it.
 	 */
-	fprintf(stderr, "neoswc: %s binding %s: %s 0x%x, swc modifiers 0x%x\n",
-	        binding->type == SWC_BINDING_BUTTON ? "pointer" : "key",
-	        binding->registered ? "registered" : "REJECTED",
-	        binding->type == SWC_BINDING_BUTTON ? "button" : "keysym",
-	        binding->keysym, binding->modifiers);
+	fprintf(stderr, "neoswc: pointer binding %s: button 0x%x, swc modifiers 0x%x\n",
+	        binding->registered ? "registered" : "REJECTED", binding->keysym,
+	        binding->modifiers);
 }
 
 static void
 binding_unregister(struct river_binding *binding)
 {
+	if (binding->type == SWC_BINDING_KEY) {
+		binding->enabled = false;
+		return;
+	}
 	if (!binding->registered) {
 		return;
 	}
 	swc_remove_binding(binding->type, binding->modifiers, binding->keysym);
 	binding->registered = false;
+}
+
+/*
+ * Whether a key event triggers this binding.
+ *
+ * The keysym comes from the binding's layout override when it has one, so a
+ * binding keeps working across a layout change -- the whole point of the
+ * request. Modifiers are compared after subtracting those the keysym consumed:
+ * producing "@" on a US layout holds shift, and a binding on plain "@" would
+ * never match if shift were still counted as held.
+ */
+static bool
+binding_matches(const struct river_binding *binding, uint32_t keycode,
+                uint32_t effective_modifiers)
+{
+	uint32_t keysym;
+
+	if (!binding->enabled || !binding->resource) {
+		return false;
+	}
+
+	keysym = binding->has_layout_override
+	             ? swc_keyboard_keysym_in_layout(keycode, binding->layout)
+	             : swc_keyboard_keysym(keycode);
+
+	if (keysym != binding->keysym) {
+		/*
+		 * Fall back to the unshifted symbol in the active layout, matching what
+		 * swc's own matcher does: a binding on "q" must fire for shift+q, whose
+		 * symbol is "Q".
+		 */
+		if (binding->has_layout_override) {
+			return false;
+		}
+		keysym = swc_keyboard_keysym_in_layout(keycode,
+		                                       swc_keyboard_layout(keycode));
+		if (keysym != binding->keysym) {
+			return false;
+		}
+	}
+
+	return binding->modifiers == effective_modifiers;
+}
+
+static bool
+binding_observe_key(void *data, uint32_t time, uint32_t keycode, uint32_t state)
+{
+	struct river_binding *binding, *match = NULL;
+	uint32_t active, effective;
+
+	(void)data;
+	(void)time;
+
+	if (state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+		/* Route the release to whichever binding this keycode pressed. */
+		wl_list_for_each (binding, &wm.key_bindings, link) {
+			if (binding->held && binding->held_keycode == keycode) {
+				binding->held = false;
+				queue_binding_event(BINDING_EVENT_RELEASED, binding, state, 0, 0);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	active = swc_keyboard_modifiers();
+	effective = active & ~swc_keyboard_consumed_modifiers(keycode);
+
+	wl_list_for_each (binding, &wm.key_bindings, link) {
+		if (binding_matches(binding, keycode, effective)) {
+			match = binding;
+			break;
+		}
+	}
+
+	/*
+	 * "Generally sent when some other (possibly unbound) key is pressed after
+	 * the pressed event is sent and before the released event" -- so any press
+	 * that is not the held binding's own stops its repeat.
+	 */
+	wl_list_for_each (binding, &wm.key_bindings, link) {
+		if (binding->held && binding != match) {
+			queue_binding_event(BINDING_EVENT_STOP_REPEAT, binding, 0, 0, 0);
+		}
+	}
+
+	if (match) {
+		match->held = true;
+		match->held_keycode = keycode;
+		fprintf(stderr, "neoswc: binding 0x%x fired (pressed)\n", match->keysym);
+		queue_binding_event(BINDING_EVENT_PRESSED, match, state, 0, 0);
+		wm.eat_next_key = false;
+		return true;
+	}
+
+	if (wm.eat_next_key) {
+		wm.eat_next_key = false;
+		queue_binding_event(BINDING_EVENT_ATE_UNBOUND, NULL, 0, 0, 0);
+		return true;
+	}
+
+	return false;
+}
+
+static void
+binding_observe_modifiers(void *data, uint32_t previous, uint32_t current)
+{
+	(void)data;
+
+	if (!wm.watched_modifiers ||
+	    !((previous ^ current) & wm.watched_modifiers)) {
+		return;
+	}
+	queue_binding_event(BINDING_EVENT_MODIFIERS, NULL, 0,
+	                    modifiers_to_river(previous),
+	                    modifiers_to_river(current));
+}
+
+static const struct swc_keyboard_observer keyboard_observer = {
+    .key = binding_observe_key,
+    .modifiers = binding_observe_modifiers,
+};
+
+/*
+ * Installed on first use rather than at startup: river_wm_create() runs before
+ * swc_initialize(), so no seat exists yet and the registration would be
+ * rejected. By the time a manager enables a binding the seat is up.
+ */
+static void
+ensure_keyboard_observer(void)
+{
+	static bool installed;
+	int ret;
+
+	if (installed) {
+		return;
+	}
+	ret = swc_add_keyboard_observer(&keyboard_observer, NULL);
+	installed = ret == 0;
+	if (!installed) {
+		fprintf(stderr,
+		        "neoswc: could not observe the keyboard (%d); key bindings "
+		        "will not fire\n",
+		        ret);
+	}
 }
 
 static void
@@ -704,15 +968,20 @@ static void
 binding_set_layout_override(struct wl_client *client,
                             struct wl_resource *resource, uint32_t layout)
 {
+	struct river_binding *binding = wl_resource_get_user_data(resource);
+
 	(void)client;
-	(void)resource;
-	(void)layout;
+	if (!binding) {
+		return;
+	}
 	/*
-	 * Resolve the keysym in a specific keyboard layout rather than the active
-	 * one, so a binding keeps working when the layout changes. swc's bindings
-	 * match on the keysym the active layout produced, with no way to ask for
-	 * another, so this is accepted and ignored.
+	 * Resolve the keysym in this layout rather than the active one, so the
+	 * binding keeps working when the layout changes -- the reason the request
+	 * exists. Out-of-range layouts are kept rather than rejected: the keymap
+	 * can change under us, and the protocol gives no error for this.
 	 */
+	binding->has_layout_override = true;
+	binding->layout = layout;
 }
 
 static const struct river_pointer_binding_v1_interface pointer_binding_impl = {
@@ -738,6 +1007,9 @@ binding_resource_destroy(struct wl_resource *resource)
 	}
 	binding_unregister(binding);
 	drop_binding_events(binding);
+	if (binding->type == SWC_BINDING_KEY) {
+		wl_list_remove(&binding->link);
+	}
 	binding->resource = NULL;
 	free(binding);
 }
@@ -750,10 +1022,36 @@ xkb_seat_destroy_request(struct wl_client *client, struct wl_resource *resource)
 }
 
 static void
-xkb_seat_ignore(struct wl_client *client, struct wl_resource *resource)
+xkb_seat_resource_destroy(struct wl_resource *resource)
+{
+	if (wm.xkb_seat == resource) {
+		wm.xkb_seat = NULL;
+		/* No manager to tell, so stop accumulating state for one. */
+		wm.eat_next_key = false;
+		wm.watched_modifiers = 0;
+	}
+}
+
+static void
+xkb_seat_ensure_next_key_eaten(struct wl_client *client,
+                               struct wl_resource *resource)
 {
 	(void)client;
 	(void)resource;
+	wm.eat_next_key = true;
+}
+
+static void
+xkb_seat_cancel_ensure_next_key_eaten(struct wl_client *client,
+                                      struct wl_resource *resource)
+{
+	(void)client;
+	(void)resource;
+	/*
+	 * "No effect if a key has already been eaten" -- which is exactly what
+	 * clearing an already-cleared flag does.
+	 */
+	wm.eat_next_key = false;
 }
 
 static void
@@ -762,24 +1060,14 @@ xkb_seat_modifiers_watch(struct wl_client *client, struct wl_resource *resource,
 {
 	(void)client;
 	(void)resource;
-	(void)modifiers;
-	/*
-	 * modifiers_update is never sent: swc reports modifier state to focused
-	 * clients but exposes no hook for the compositor to observe it. A manager
-	 * using this to drive modifier-held modes will not see them.
-	 */
+	/* 0 means the manager no longer wants them, which falls out of the mask. */
+	wm.watched_modifiers = modifiers_to_swc(modifiers);
 }
 
 static const struct river_xkb_bindings_seat_v1_interface xkb_seat_impl = {
     .destroy = xkb_seat_destroy_request,
-    /*
-     * ensure_next_key_eaten asks that the next key press be swallowed rather
-     * than delivered, which swc's binding API cannot express: it swallows keys
-     * that match a registered binding and nothing else. ate_unbound_key is
-     * therefore never sent either.
-     */
-    .ensure_next_key_eaten = xkb_seat_ignore,
-    .cancel_ensure_next_key_eaten = xkb_seat_ignore,
+    .ensure_next_key_eaten = xkb_seat_ensure_next_key_eaten,
+    .cancel_ensure_next_key_eaten = xkb_seat_cancel_ensure_next_key_eaten,
     .modifiers_watch = xkb_seat_modifiers_watch,
 };
 
@@ -820,11 +1108,12 @@ xkb_bindings_get_xkb_binding(struct wl_client *client,
 	}
 	wl_resource_set_implementation(binding->resource, &binding_impl, binding,
 	                               binding_resource_destroy);
+	wl_list_insert(wm.key_bindings.prev, &binding->link);
 
 	/*
-	 * Not registered here. The protocol is explicit that "the new key binding
-	 * is not enabled until initial configuration is completed and the enable
-	 * request is made", so registering on creation let a binding fire while the
+	 * Not enabled here. The protocol is explicit that "the new key binding is
+	 * not enabled until initial configuration is completed and the enable
+	 * request is made", so enabling on creation let a binding fire while the
 	 * manager was still setting itself up. A comment here used to claim the
 	 * opposite of what the spec says.
 	 */
@@ -845,7 +1134,9 @@ xkb_bindings_get_seat(struct wl_client *client, struct wl_resource *resource,
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(xkb_seat, &xkb_seat_impl, NULL, NULL);
+	wl_resource_set_implementation(xkb_seat, &xkb_seat_impl, NULL,
+	                               xkb_seat_resource_destroy);
+	wm.xkb_seat = xkb_seat;
 }
 
 static const struct river_xkb_bindings_v1_interface xkb_bindings_impl = {
@@ -1885,6 +2176,12 @@ river_wm_create(struct wl_display *display)
 	wl_list_init(&wm.windows);
 	wl_list_init(&wm.outputs);
 	wl_list_init(&pending_binding_events);
+	wl_list_init(&wm.key_bindings);
+	/*
+	 * The keyboard observer is installed lazily, not here: river_wm_create()
+	 * runs before swc_initialize() -- it has to, because new_screen fires
+	 * during that call -- so there is no seat yet and registering would fail.
+	 */
 
 	wm.global = wl_global_create(display, &river_window_manager_v1_interface,
 	                             5, NULL, bind_manager);

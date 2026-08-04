@@ -500,7 +500,11 @@ in
       # compositor tore down instead of guessing which client it was.
       say "windows closed: $(grep -c 'Finalizing window' /tmp/neoswc.log 2>/dev/null || true)"
       say "clients after bindings: $(ps -eo comm | grep -c '^foot$') foot, $(pgrep -c -x wev || true) wev"
-      say "bindings registered: $(grep -cE '^neoswc: (key|pointer) binding registered' /tmp/neoswc.log 2>/dev/null || true)"
+      # Key bindings say "enabled" and pointer bindings say "registered": key
+      # matching moved into wm/, so nothing is handed to swc_add_binding for a
+      # key any more. Counting only "registered" silently reported 2 instead of
+      # 57 and looked like the bindings had stopped working.
+      say "bindings registered: $(grep -cE '^neoswc: (key binding enabled|pointer binding registered)' /tmp/neoswc.log 2>/dev/null || true)"
       say "bindings fired: $(grep -c 'binding 0x.* fired' /tmp/neoswc.log 2>/dev/null || true)"
       say "binding fire log: $(grep 'fired' /tmp/neoswc.log 2>/dev/null | tail -8 | tr '\n' '|')"
       say "binding events: $(grep -c 'BINDING pressed' /tmp/wmclient.log 2>/dev/null || true) press(es)"

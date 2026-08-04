@@ -28,14 +28,17 @@
 #include "keyboard.h"
 #include "compositor.h"
 #include "internal.h"
+#include "seat.h"
 #include "surface.h"
 #include "swc.h"
 #include "util.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -98,6 +101,238 @@ mod_active(uint32_t mods_active, uint32_t index)
 {
 	return index != XKB_MOD_INVALID && (mods_active & (1u << index));
 }
+
+/* --------------------------------------------------------------- observers */
+
+/*
+ * swc_add_keyboard_observer() and the swc_keyboard_* accessors.
+ *
+ * One internal keyboard_handler fans out to however many observers a compositor
+ * registers: keyboard_handler identifies an implementation by its function
+ * pointers and passes no user data, so it cannot itself carry a list.
+ */
+struct keyboard_observer {
+	const struct swc_keyboard_observer *impl;
+	void *data;
+	struct wl_list link;
+};
+
+static struct wl_list observers;
+static bool observers_initialized;
+static uint32_t observers_last_modifiers;
+
+static uint32_t
+mask_to_swc(const struct xkb *xkb, uint32_t xkb_mask)
+{
+	uint32_t result = 0;
+
+	if (mod_active(xkb_mask, xkb->indices.ctrl)) {
+		result |= SWC_MOD_CTRL;
+	}
+	if (mod_active(xkb_mask, xkb->indices.alt)) {
+		result |= SWC_MOD_ALT;
+	}
+	if (mod_active(xkb_mask, xkb->indices.super)) {
+		result |= SWC_MOD_LOGO;
+	}
+	if (mod_active(xkb_mask, xkb->indices.shift)) {
+		result |= SWC_MOD_SHIFT;
+	}
+	if (mod_active(xkb_mask, xkb->indices.mod3)) {
+		result |= SWC_MOD_MOD3;
+	}
+	if (mod_active(xkb_mask, xkb->indices.mod5)) {
+		result |= SWC_MOD_MOD5;
+	}
+
+	return result;
+}
+
+static bool
+observer_handle_key(struct keyboard *keyboard, uint32_t time, struct key *key,
+                    uint32_t state)
+{
+	struct keyboard_observer *observer;
+
+	(void)keyboard;
+
+	wl_list_for_each (observer, &observers, link) {
+		if (observer->impl->key &&
+		    observer->impl->key(observer->data, time, key->press.value, state)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool
+observer_handle_modifiers(struct keyboard *keyboard,
+                          const struct keyboard_modifier_state *state)
+{
+	struct keyboard_observer *observer;
+	uint32_t previous = observers_last_modifiers;
+
+	(void)state;
+
+	/* keyboard->modifiers is already the new mask: the caller updates it before
+	 * running handlers. The old one is only available because we kept it. */
+	if (keyboard->modifiers == previous) {
+		return false;
+	}
+	observers_last_modifiers = keyboard->modifiers;
+
+	wl_list_for_each (observer, &observers, link) {
+		if (observer->impl->modifiers) {
+			observer->impl->modifiers(observer->data, previous,
+			                          keyboard->modifiers);
+		}
+	}
+
+	return false;
+}
+
+static struct keyboard_handler observer_handler = {
+    .key = observer_handle_key,
+    .modifiers = observer_handle_modifiers,
+};
+
+EXPORT int
+swc_add_keyboard_observer(const struct swc_keyboard_observer *impl, void *data)
+{
+	struct keyboard_observer *observer;
+	struct keyboard *keyboard;
+
+	if (!impl || !swc.seat || !(keyboard = swc.seat->keyboard)) {
+		return -EINVAL;
+	}
+	if (!(observer = malloc(sizeof(*observer)))) {
+		return -ENOMEM;
+	}
+	observer->impl = impl;
+	observer->data = data;
+
+	if (!observers_initialized) {
+		wl_list_init(&observers);
+		observers_initialized = true;
+		observers_last_modifiers = keyboard->modifiers;
+		/*
+		 * Immediately before the client handler, which puts observers after
+		 * swc's own bindings. VT switching and the terminate binding are
+		 * registered with swc_add_binding(), and an observer able to swallow
+		 * them could strand the user on a wedged VT.
+		 */
+		wl_list_insert(keyboard->client_handler.link.prev,
+		               &observer_handler.link);
+	}
+
+	wl_list_insert(observers.prev, &observer->link);
+
+	return 0;
+}
+
+EXPORT void
+swc_remove_keyboard_observer(const struct swc_keyboard_observer *impl,
+                             void *data)
+{
+	struct keyboard_observer *observer, *tmp;
+
+	if (!observers_initialized) {
+		return;
+	}
+
+	wl_list_for_each_safe (observer, tmp, &observers, link) {
+		if (observer->impl == impl && observer->data == data) {
+			wl_list_remove(&observer->link);
+			free(observer);
+			return;
+		}
+	}
+}
+
+static struct xkb *
+active_xkb(void)
+{
+	if (!swc.seat || !swc.seat->keyboard) {
+		return NULL;
+	}
+	return &swc.seat->keyboard->xkb;
+}
+
+EXPORT uint32_t
+swc_keyboard_keysym(uint32_t keycode)
+{
+	struct xkb *xkb = active_xkb();
+
+	if (!xkb) {
+		return 0;
+	}
+	return xkb_state_key_get_one_sym(xkb->state, XKB_KEY(keycode));
+}
+
+EXPORT uint32_t
+swc_keyboard_keysym_in_layout(uint32_t keycode, uint32_t layout)
+{
+	struct xkb *xkb = active_xkb();
+	const xkb_keysym_t *keysyms;
+	int count;
+
+	if (!xkb || layout >= xkb_keymap_num_layouts(xkb->keymap.map)) {
+		return 0;
+	}
+	/*
+	 * Shift level 0 deliberately: a binding names the unshifted symbol, and the
+	 * modifiers it wants are matched separately. This mirrors the fallback
+	 * find_key_binding() already does for the active layout.
+	 */
+	count = xkb_keymap_key_get_syms_by_level(xkb->keymap.map, XKB_KEY(keycode),
+	                                         layout, 0, &keysyms);
+
+	return count > 0 ? keysyms[0] : 0;
+}
+
+EXPORT uint32_t
+swc_keyboard_modifiers(void)
+{
+	if (!swc.seat || !swc.seat->keyboard) {
+		return 0;
+	}
+	return swc.seat->keyboard->modifiers;
+}
+
+EXPORT uint32_t
+swc_keyboard_consumed_modifiers(uint32_t keycode)
+{
+	struct xkb *xkb = active_xkb();
+
+	if (!xkb) {
+		return 0;
+	}
+	return mask_to_swc(xkb, xkb_state_key_get_consumed_mods2(
+	                            xkb->state, XKB_KEY(keycode),
+	                            XKB_CONSUMED_MODE_XKB));
+}
+
+EXPORT uint32_t
+swc_keyboard_num_layouts(void)
+{
+	struct xkb *xkb = active_xkb();
+
+	return xkb ? xkb_keymap_num_layouts(xkb->keymap.map) : 0;
+}
+
+EXPORT uint32_t
+swc_keyboard_layout(uint32_t keycode)
+{
+	struct xkb *xkb = active_xkb();
+
+	if (!xkb) {
+		return 0;
+	}
+	return xkb_state_key_get_layout(xkb->state, XKB_KEY(keycode));
+}
+
+/* ----------------------------------------------------------------- client */
 
 static bool
 client_handle_key(struct keyboard *keyboard,

@@ -940,6 +940,90 @@ swc_remove_binding(enum swc_binding_type type, uint32_t modifiers,
                    uint32_t value);
 
 /**
+ * Observe raw keyboard events.
+ *
+ * swc_add_binding() answers "call me when this exact combination is pressed",
+ * which is all most compositors want. A compositor implementing a window
+ * management protocol needs more: to resolve a key in a layout other than the
+ * active one, to know which modifiers a keysym consumed, to swallow a key that
+ * matches nothing, and to see presses that no binding claimed. All of that
+ * needs the raw event.
+ *
+ * Observers run *after* swc's own bindings and before the event is delivered to
+ * the focused client. That order is deliberate: VT switching and the terminate
+ * binding are registered internally with swc_add_binding(), and an observer
+ * that could swallow them would be able to trap the user on a wedged VT.
+ *
+ * Returning true from `key` consumes the event -- it does not reach the client.
+ * Both modifier masks are SWC_MOD_* values.
+ */
+struct swc_keyboard_observer {
+	bool (*key)(void *data, uint32_t time, uint32_t keycode, uint32_t state);
+	void (*modifiers)(void *data, uint32_t previous, uint32_t current);
+};
+
+int
+swc_add_keyboard_observer(const struct swc_keyboard_observer *observer,
+                          void *data);
+void
+swc_remove_keyboard_observer(const struct swc_keyboard_observer *observer,
+                             void *data);
+
+/**
+ * Keyboard state, for compositors doing their own key matching.
+ *
+ * Deliberately narrow: these hand back plain integers rather than exposing
+ * xkbcommon types, so swc.h imposes no dependency on its consumers. The cost is
+ * that each new need means a new accessor here -- see the note in swc_keyboard
+ * accessors' implementation for what that trade is expected to cost.
+ *
+ * Keycodes are the values swc uses everywhere else, i.e. Linux evdev codes; the
+ * xkb offset is applied internally.
+ */
+uint32_t
+swc_keyboard_keysym(uint32_t keycode);
+
+/**
+ * The keysym a keycode produces in a specific layout, ignoring which layout is
+ * active. `layout` is a 0-indexed xkb layout number. Returns 0 if the layout
+ * does not exist or the key produces nothing in it.
+ */
+uint32_t
+swc_keyboard_keysym_in_layout(uint32_t keycode, uint32_t layout);
+
+/**
+ * The modifiers currently held, as an SWC_MOD_* mask.
+ */
+uint32_t
+swc_keyboard_modifiers(void);
+
+/**
+ * The modifiers consumed producing the current keysym for this keycode, as an
+ * SWC_MOD_* mask.
+ *
+ * A binding should compare against the active modifiers minus these, or a
+ * keysym that requires a modifier can never be matched: pressing shift+2 for
+ * "@" leaves shift active, and a binding on plain "@" would otherwise miss.
+ */
+uint32_t
+swc_keyboard_consumed_modifiers(uint32_t keycode);
+
+/**
+ * Number of layouts in the active keymap, for validating a layout override.
+ */
+uint32_t
+swc_keyboard_num_layouts(void);
+
+/**
+ * The layout currently in effect for this keycode, 0-indexed.
+ *
+ * Needed to ask swc_keyboard_keysym_in_layout() for the *unshifted* symbol of
+ * the active layout, which is what a binding names.
+ */
+uint32_t
+swc_keyboard_layout(uint32_t keycode);
+
+/**
  * register a new pointer axis binding
  *
  * this will intercept axis events from clients; use swc_pointer_send_axis()
