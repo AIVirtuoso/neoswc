@@ -85,4 +85,7 @@ screen_mask(struct screen *screen)
 void
 screen_update_usable_geometry(struct screen *screen);
 
+void
+screens_update_pointer_region(void);
+
 #endif

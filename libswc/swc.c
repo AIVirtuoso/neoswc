@@ -2,6 +2,13 @@
  *
  * Copyright (c) 2013-2020 Michael Forney
  *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -74,10 +81,6 @@ struct swc swc = {
 static void
 setup_compositor(void)
 {
-	pixman_region32_t pointer_region;
-	struct screen *screen;
-	struct swc_rectangle *geom;
-
 	wl_list_insert(&swc.seat->keyboard->handlers,
 	               &swc.bindings->keyboard_handler->link);
 	wl_list_insert(&swc.seat->pointer->handlers,
@@ -88,18 +91,8 @@ setup_compositor(void)
 	wl_signal_add(&swc.seat->pointer->focus.event_signal,
 	              &window_enter_listener);
 
-	/* Calculate pointer region */
-	pixman_region32_init(&pointer_region);
-
-	wl_list_for_each(screen, &swc.screens, link)
-	{
-		geom = &screen->base.geometry;
-		pixman_region32_union_rect(&pointer_region, &pointer_region, geom->x,
-		                           geom->y, geom->width, geom->height);
-	}
-
-	pointer_set_region(swc.seat->pointer, &pointer_region);
-	pixman_region32_fini(&pointer_region);
+	/* Recomputed on every screen move, so it lives in screen.c. */
+	screens_update_pointer_region();
 }
 
 void

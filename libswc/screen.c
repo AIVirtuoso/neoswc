@@ -38,6 +38,7 @@
 #include "output_management.h"
 #include "plane.h"
 #include "pointer.h"
+#include "seat.h"
 #include "util.h"
 
 #include "swc-server-protocol.h"
@@ -47,6 +48,41 @@
 
 static struct screen *active_screen;
 static const struct swc_screen_handler null_handler;
+
+/*
+ * The pointer is confined to the union of the screen rectangles. That union
+ * changes whenever a screen moves, so it cannot be computed once at startup:
+ * before swc_screen_set_position() existed a screen never moved and setting it
+ * from setup_compositor() was enough, but an output-management client
+ * rearranging the monitors left the pointer clipped to swc's enumeration
+ * order. The visible effect is a screen the pointer cannot reach the bottom of
+ * and dead space above another -- whatever the old union happened to cover.
+ */
+void
+screens_update_pointer_region(void)
+{
+	pixman_region32_t region;
+	struct screen *screen;
+	struct swc_rectangle *geom;
+
+	/* Screens are created before the seat is, so this is a no-op during
+	 * screens_initialize(); setup_compositor() calls it again once the
+	 * pointer exists. */
+	if (!swc.seat || !swc.seat->pointer) {
+		return;
+	}
+
+	pixman_region32_init(&region);
+
+	wl_list_for_each (screen, &swc.screens, link) {
+		geom = &screen->base.geometry;
+		pixman_region32_union_rect(&region, &region, geom->x, geom->y,
+		                           geom->width, geom->height);
+	}
+
+	pointer_set_region(swc.seat->pointer, &region);
+	pixman_region32_fini(&region);
+}
 
 static bool
 handle_motion(struct pointer_handler *handler,
@@ -234,6 +270,9 @@ swc_screen_set_position(struct swc_screen *base, int32_t x, int32_t y)
 	/* A view's screen mask comes from intersection, so moving the screen out
 	 * from under it changes which screens it is on. */
 	compositor_update_screens();
+
+	/* The pointer's region is the union of the screens, which just changed. */
+	screens_update_pointer_region();
 
 	/* Bump the output-management serial, so a client holding a configuration
 	 * built against the old layout is told it is stale rather than having it
