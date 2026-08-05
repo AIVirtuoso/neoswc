@@ -717,6 +717,44 @@ pointer_set_focus(struct pointer *pointer, struct compositor_view *view)
 	input_focus_set(&pointer->focus, view);
 }
 
+/*
+ * Put the pointer somewhere that actually exists.
+ *
+ * Reached when neither the requested position nor the last one is on a screen.
+ * Upstream answered that with (0,0), which was safe only because screens
+ * always began at the origin. Once an output-management client can move them,
+ * the origin need not be on any screen -- and the trap then closes: every
+ * later motion clips against the *last* position, which is now also outside,
+ * so the pointer is put back at (0,0) forever. The symptom is a session with
+ * no cursor at all that no amount of moving the mouse recovers.
+ *
+ * Rearranging two monitors passes through exactly that state, because the
+ * heads move one at a time and the pointer is briefly outside the union of
+ * where they have got to so far.
+ *
+ * The centre of the first rectangle is deliberately dull: it is always inside
+ * the region, needs no geometry, and there is no better answer when the
+ * pointer's own history has been invalidated.
+ */
+static void
+recover_position(struct pointer *pointer)
+{
+	pixman_box32_t *boxes;
+	int n = 0;
+
+	boxes = pixman_region32_rectangles(&pointer->region, &n);
+	if (n == 0) {
+		/* No screens at all. Nothing is a valid position, so keep the old
+		 * behaviour rather than inventing one. */
+		pointer->x = 0;
+		pointer->y = 0;
+		return;
+	}
+
+	pointer->x = wl_fixed_from_int(boxes[0].x1 + (boxes[0].x2 - boxes[0].x1) / 2);
+	pointer->y = wl_fixed_from_int(boxes[0].y1 + (boxes[0].y2 - boxes[0].y1) / 2);
+}
+
 static void
 clip_position(struct pointer *pointer, wl_fixed_t fx, wl_fixed_t fy)
 {
@@ -732,8 +770,7 @@ clip_position(struct pointer *pointer, wl_fixed_t fx, wl_fixed_t fy)
 		if (!pixman_region32_contains_point(&pointer->region, last_x, last_y,
 		                                    &box)) {
 			WARNING("cursor is not in the visible screen area\n");
-			pointer->x = 0;
-			pointer->y = 0;
+			recover_position(pointer);
 			return;
 		}
 

@@ -335,6 +335,24 @@ in
         # Put it back. Leaving the screen at 300,150 offsets every screendump
         # taken later in the run, which looks like a rendering fault in whatever
         # is being tested next rather than like this check not cleaning up.
+        # Move the screen right out from under the pointer, which is what a
+        # two-monitor rearrangement does transiently: the heads move one at a
+        # time, so between them the pointer is outside the union of where they
+        # have got to so far.
+        #
+        # swc used to answer that by parking the pointer at (0,0), which is only
+        # a valid position while screens begin at the origin. Once one does not,
+        # the pointer is off-screen -- and since every later motion clips
+        # against the *last* position, which is now also outside, it is put back
+        # at (0,0) forever. A session with no cursor at all and no way to
+        # recover it, which is what this checks.
+        wlr-randr --output Virtual-1 --pos 3000,2000 >/dev/null 2>&1 || true
+        sleep 2
+        # river_seat_v1.pointer_position is the only direct read of where the
+        # pointer is: parked off every screen it is invisible, and a screendump
+        # cannot show the cursor anyway (it lives on its own DRM plane). It has
+        # to land inside 3000,2000-4280,2800; 0,0 is the wedge.
+        say "pointer after far move: $(grep 'wmclient: POINTER at' /tmp/neoswc.log 2>/dev/null | tail -1)"
         wlr-randr --output Virtual-1 --pos 0,0 >/dev/null 2>&1 || true
         sleep 1
         say "wlr-randr restored: $(wlr-randr 2>&1 | grep -i position | tr '\n' '|' | head -c 120)"
