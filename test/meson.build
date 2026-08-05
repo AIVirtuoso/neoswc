@@ -29,3 +29,11 @@ orphan_subsurface = executable('orphan-subsurface',
   dependencies: [dependency('wayland-client')],
   install: true,
 )
+
+# Abandons the cursor, the two ways a client can: destroying its cursor surface
+# and hiding the pointer with a NULL one. Both left the session with no pointer.
+cursor_orphan = executable('cursor-orphan',
+  ['cursor_orphan.c'] + protos['xdg-shell'],
+  dependencies: [dependency('wayland-client')],
+  install: true,
+)

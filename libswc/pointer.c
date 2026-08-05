@@ -141,6 +141,24 @@ enter(struct input_focus_handler *handler, struct wl_list *resources,
 		pointer_set_cursor(pointer, cursor_left_ptr);
 		return;
 	}
+
+	/*
+	 * A cursor belongs to the client that set it, so entering a different
+	 * client starts from the compositor's own again. Without this, whatever
+	 * the previous client left behind stays on screen over the new one --
+	 * including *nothing*, if it had hidden the cursor, which is a client
+	 * being able to take the pointer away from the whole session.
+	 *
+	 * Keyed on the client rather than the surface so moving between a
+	 * client's own surfaces -- its subsurfaces, its popups -- does not flicker
+	 * back to the default on every crossing. The client sets its cursor again
+	 * in response to the enter event below.
+	 */
+	if (pointer->cursor.client &&
+	    pointer->cursor.client != pointer->focus.client) {
+		pointer_set_cursor(pointer, cursor_left_ptr);
+	}
+
 	serial = wl_display_next_serial(swc.display);
 	/* do based on buffer origin, holy fuck */
 	origin_x = view->base.geometry.x - view->buffer_offset_x;
@@ -169,8 +187,26 @@ handle_cursor_surface_destroy(struct wl_listener *listener, void *data)
 	struct pointer *pointer =
 	    wl_container_of(listener, pointer, cursor.destroy_listener);
 
-	view_attach(&pointer->cursor.view, NULL);
+	(void)data;
+
+	/*
+	 * Fall back to the compositor's cursor rather than to whatever the dead
+	 * client left behind.
+	 *
+	 * This used to attach NULL, intending to blank the cursor -- but attach()
+	 * returns early for a surface with no pending damage, and a surface's
+	 * damage is always consumed by the commit that precedes its destruction.
+	 * So the call did nothing and the destroyed client's cursor image stayed
+	 * on screen indefinitely. Measured, not assumed: the DRM cursor plane
+	 * holds the same framebuffer before and after, in the VM.
+	 *
+	 * Clear the surface first: the destroy listener is firing, so the link
+	 * must not be removed again, and pointer_set_cursor() only touches it
+	 * when a surface is still set.
+	 */
 	pointer->cursor.surface = NULL;
+	pointer->cursor.client = NULL;
+	pointer_set_cursor(pointer, cursor_left_ptr);
 }
 
 static bool
@@ -266,6 +302,7 @@ drop_client_cursor_surface(struct pointer *pointer)
 	surface_set_view(pointer->cursor.surface, NULL);
 	wl_list_remove(&pointer->cursor.destroy_listener.link);
 	pointer->cursor.surface = NULL;
+	pointer->cursor.client = NULL;
 }
 
 static void
@@ -380,6 +417,7 @@ pointer_set_cursor(struct pointer *pointer, uint32_t id)
 		wl_list_remove(&pointer->cursor.destroy_listener.link);
 		pointer->cursor.surface = NULL;
 	}
+	pointer->cursor.client = NULL;
 
 	buffer = wld_import_buffer(swc.shm->context, WLD_OBJECT_DATA, object,
 	                           cursor->width, cursor->height,
@@ -644,6 +682,7 @@ pointer_initialize(struct pointer *pointer)
 
 	view_initialize(&pointer->cursor.view, &view_impl);
 	pointer->cursor.surface = NULL;
+	pointer->cursor.client = NULL;
 	pointer->cursor.destroy_listener.notify = &handle_cursor_surface_destroy;
 	pointer->cursor.buffer = wld_create_buffer(
 	    swc.drm->context, swc.drm->cursor_w, swc.drm->cursor_h,
@@ -742,6 +781,7 @@ set_cursor(struct wl_client *client, struct wl_resource *resource,
 	surface =
 	    surface_resource ? wl_resource_get_user_data(surface_resource) : NULL;
 	pointer->cursor.surface = surface;
+	pointer->cursor.client = client;
 	pointer->cursor.hotspot.x = hotspot_x;
 	pointer->cursor.hotspot.y = hotspot_y;
 
@@ -751,6 +791,15 @@ set_cursor(struct wl_client *client, struct wl_resource *resource,
 		                                 &pointer->cursor.destroy_listener);
 		update_cursor(pointer);
 	}
+	/*
+	 * A NULL surface means "hide the pointer", and swc does not: the previous
+	 * image stays on screen. Deliberately left alone for now. Implementing it
+	 * is a one-line view_attach(&pointer->cursor.view, NULL) here, but it
+	 * makes the cursor genuinely vanish over any client that asks for no
+	 * cursor -- and the open report this was found under is a cursor that
+	 * vanishes. Shipping it while that is unexplained would risk becoming the
+	 * cause. Fix it once the disappearance has a known origin.
+	 */
 }
 
 static const struct wl_pointer_interface pointer_impl = {

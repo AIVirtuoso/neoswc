@@ -349,6 +349,59 @@ in
         say "swaybg alive: $(pgrep -c -x swaybg || true)"
       fi
 
+      # The cursor, before any other window exists.
+      #
+      # No screendump can show this: swc puts the cursor on its own DRM plane
+      # via drmModeSetPlane, so it never reaches the shadow buffer and QEMU
+      # captures the scanout without it. modetest reads the plane's framebuffer
+      # id directly instead -- non-zero means a pointer is on screen, 0 means
+      # the user has none. That is the whole assertion.
+      #
+      # Run first and alone deliberately: the pointer starts at the centre of
+      # the screen, so a single full-screen window is guaranteed to be under it
+      # and set_cursor is guaranteed to be honoured. With other windows around
+      # the manager tiles them and which row the pointer lands in depends on
+      # how many there are.
+      #
+      # Two ways a client can abandon the cursor, both of which used to leave
+      # the session with no pointer at all: destroying its cursor surface (swc
+      # attached NULL to every cursor plane and stopped there) and
+      # set_cursor(NULL) to hide it (swc kept showing the stale image, and
+      # nothing restored the compositor's own when the pointer moved on).
+      # Columns are id, crtc, fb -- so the framebuffer is $3. Reading $2 gives
+      # the crtc instead, which is 0 for an unused plane and so looks exactly
+      # like the answer being sought.
+      # Every plane as id:crtc:fb. The cursor plane is the one carrying AR24;
+      # fb 0 means nothing is on it, which is a session with no pointer.
+      # Printing them all rather than filtering: a filter that silently matches
+      # the primary plane reports a healthy-looking framebuffer either way.
+      cursor_fb() {
+        modetest -p 2>/dev/null | awk '
+          /^Planes:/ { p = 1; next }
+          p && /^[0-9]+\t/ { printf "%s:%s:%s ", $1, $2, $3 }
+        '
+      }
+      for mode in destroy destroy-dirty hide; do
+        cursor-orphan "$mode" > /tmp/cursor-$mode.log 2>&1 &
+        client=$!
+        # swc assigns pointer focus on motion, never at startup, so without an
+        # injected move no client is ever sent wl_pointer.enter and set_cursor
+        # is refused. The host moves the pointer at go-cursor-$mode; the window
+        # is full-screen, so anywhere will do.
+        say "MARK cursor-$mode"
+        touch /tmp/neoswc-vm-share/mark-cursor-$mode
+        wait_host cursor-$mode
+        sleep 4
+        # Sampled while the client is still alive and still owns the cursor.
+        say "cursor $mode plane fb while held: $(cursor_fb)"
+        wait "$client" 2>/dev/null || true
+        # Only now is the client's own log complete -- it reports what it did
+        # after it has done it, and reading it earlier showed nothing at all.
+        say "cursor $mode: $(tr '\n' '|' < /tmp/cursor-$mode.log | head -c 160)"
+        sleep 3
+        say "cursor $mode plane fb after exit: $(cursor_fb)"
+      done
+
       # The example wm grid-tiles on every add, so each new client triggers a
       # multi-window relayout -- the exact operation the barrier makes atomic.
       # Keep their output: a client that dies silently is the whole problem.

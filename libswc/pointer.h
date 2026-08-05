@@ -2,6 +2,13 @@
  *
  * Copyright (c) 2013, 2014 Michael Forney
  *
+ * Modifications copyright (c) 2026 neoswc contributors
+ *
+ * SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+ *
+ * The MIT notice below covers the original upstream code. Modifications by
+ * neoswc contributors are licensed GPL-3.0-or-later; see COPYING.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -56,6 +63,15 @@ struct pointer {
 	struct {
 		struct view view;
 		struct surface *surface;
+		/*
+		 * The client the current cursor belongs to, or NULL when the
+		 * compositor's own cursor is showing. Tracked separately from
+		 * `surface` because a client can hide the cursor by setting a NULL
+		 * surface, and that state still belongs to it: entering a different
+		 * client has to undo it, and without this there would be nothing left
+		 * to say whose it was.
+		 */
+		struct wl_client *client;
 		struct wl_listener destroy_listener;
 		struct wld_buffer *buffer;
 
