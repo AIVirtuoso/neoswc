@@ -85,6 +85,10 @@ static struct {
 	struct wl_resource *xkb_seat; /* river_xkb_bindings_seat_v1, or NULL */
 	bool eat_next_key;
 	uint32_t watched_modifiers; /* swc encoding */
+
+	/* Last pointer position sent, so it is only re-sent when it changes. */
+	int32_t pointer_x, pointer_y;
+	bool pointer_position_sent;
 } wm;
 
 static void schedule_sequence(void);
@@ -1980,6 +1984,50 @@ advertise_window(struct river_window *window)
 	}
 }
 
+/*
+ * "Assuming the seat has a pointer, this event must be sent in every manage
+ * sequence unless there is no change in x/y position since the last time this
+ * event was sent."
+ *
+ * Note what the spec says next: "a change in pointer position alone must not
+ * cause the compositor to start a manage sequence". So this only ever rides a
+ * sequence that was going to happen anyway -- it never calls
+ * schedule_sequence(), or every mouse movement would drive a full round trip.
+ */
+static void
+send_pointer_position(void)
+{
+	int32_t x, y;
+
+	if (!wm.seat ||
+	    wl_resource_get_version(wm.seat) <
+	        RIVER_SEAT_V1_POINTER_POSITION_SINCE_VERSION) {
+		return;
+	}
+	if (!swc_cursor_position(&x, &y)) {
+		return;
+	}
+	/*
+	 * swc_cursor_position() hands back wl_fixed_t 24.8 units -- its header says
+	 * so -- and the protocol wants "the compositor's logical coordinate space".
+	 * Forwarding it unconverted sends the manager coordinates 256x too large,
+	 * which is a plausible-looking integer rather than an obvious error.
+	 */
+	x = wl_fixed_to_int(x);
+	y = wl_fixed_to_int(y);
+
+	/* Compared after conversion, so sub-pixel jitter does not produce an event
+	 * on every sequence. */
+	if (wm.pointer_position_sent && x == wm.pointer_x && y == wm.pointer_y) {
+		return;
+	}
+
+	wm.pointer_x = x;
+	wm.pointer_y = y;
+	wm.pointer_position_sent = true;
+	river_seat_v1_send_pointer_position(wm.seat, x, y);
+}
+
 static void
 begin_manage(void)
 {
@@ -2001,6 +2049,8 @@ begin_manage(void)
 		advertise_window(window);
 		window->has_proposal = false;
 	}
+
+	send_pointer_position();
 
 	/* Last, so manage_start immediately follows the state it belongs to. */
 	flush_binding_events();

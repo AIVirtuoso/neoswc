@@ -503,6 +503,21 @@ seat_xy(void *data, struct river_seat_v1 *proxy, int32_t x, int32_t y)
 	(void)y;
 }
 
+/*
+ * Where the pointer actually is, in global coordinates. Reported because it is
+ * the only direct read of the compositor's pointer position from outside: a
+ * pointer parked off every screen is invisible, and a screendump cannot show
+ * it either, since swc draws the cursor on its own DRM plane.
+ */
+static void
+seat_pointer_position(void *data, struct river_seat_v1 *proxy, int32_t x,
+                      int32_t y)
+{
+	(void)data;
+	(void)proxy;
+	say("POINTER at %d,%d", x, y);
+}
+
 static const struct river_seat_v1_listener seat_listener = {
     .removed = seat_removed,
     .wl_seat = seat_wl_seat,
@@ -512,7 +527,7 @@ static const struct river_seat_v1_listener seat_listener = {
     .shell_surface_interaction = seat_shell_surface,
     .op_delta = seat_xy,
     .op_release = seat_none,
-    .pointer_position = seat_xy,
+    .pointer_position = seat_pointer_position,
 };
 
 /* ----------------------------------------------------------- key binding */
