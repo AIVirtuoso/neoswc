@@ -18,7 +18,6 @@ neu features
 - fullscreen
 - double window borders
 - screenshots
-- evdev-only input backend
 - layer shell support
 - window decorations
 
@@ -35,7 +34,7 @@ you will need:
 - wayland-server, wayland-client
 - libdrm, pixman, xkbcommon
 - [neuwld](https://git.sr.ht/~shrub900/neuwld)
-- on linux, either libinput or evdev, depending on your choice of input backend, neither on BSD
+- libinput on Linux and wscons on BSD
 - xcb, xcb-composite, xcb-ewmh and xcb-icccm if you want Xwayland support.
 
 to build, i use muon and samu. you can probably do something similar with meson and ninja.

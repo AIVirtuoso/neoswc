@@ -42,7 +42,6 @@ libswc_src = files(
 
   input_backend == 'libinput' ? 'seat.c' : [],
   input_backend == 'wscons' ? 'seat-ws.c' : [],
-  input_backend == 'evdev' ? 'seat-evdev.c' : [],
 
   xwayland.found() ? ['xserver.c', 'xwm.c'] : [],  
 )

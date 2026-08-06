@@ -58,8 +58,11 @@ libinput = dependency('libinput', version: '>=0.4', required: input_backend == '
 
 if input_backend == 'auto'
   if os == 'linux'
-    input_backend = libinput.found() ? 'libinput' : 'evdev'
-  elif os == 'netbsd'
+    if not libinput.found()
+      error('libinput is required for the Linux input backend')
+    endif
+    input_backend = 'libinput'
+  elif os == 'netbsd' or os == 'openbsd'
     input_backend = 'wscons'
   else
     error('Failed to determine input backend for ' + os)
@@ -72,11 +75,6 @@ if input_backend == 'libinput'
     add_project_arguments('-DENABLE_LIBUDEV', language: 'c')
   endif
   requires_private += [libinput, udev]
-elif input_backend == 'evdev'
-  add_project_arguments([
-    '-DEVDEV_KBD_DEVICE="@0@"'.format(get_option('evdev-keyboard')),
-    '-DEVDEV_POINTER_DEVICE="@0@"'.format(get_option('evdev-pointer')),
-  ], language: 'c')
 endif
 
 subdir('protocol')
