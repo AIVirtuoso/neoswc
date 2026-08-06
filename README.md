@@ -1,7 +1,7 @@
 neuswc
 ------
 
-neuswc is a fork of [swc](https://github.com/michaelforney/swc/) created by [wayland.fyi](https://wayland.fyi). it provides an easy C library interface to make a wayland compositor. it is much smaller than alternatives like wlroots, and easier to use. it is also portable to linux, freebsd, and netbsd (natively, without any linux compatibility layers.) openbsd support is partial; if you want tohelp with that (or anything else) submit a patch to the [mailing list](https://lists.sr.ht/~shrub900/neuswc)
+neuswc is a fork of [swc](https://github.com/michaelforney/swc/) created by [wayland.fyi](https://wayland.fyi). it provides an easy C library interface to make a wayland compositor. it is much smaller than alternatives like wlroots, and easier to use. it is also portable to linux, freebsd, netbsd, and openbsd. if you want tohelp with that (or anything else) submit a patch to the [mailing list](https://lists.sr.ht/~shrub900/neuswc)
 
 you can view a list of some compositors made with neuswc at the [wayland.fyi website.](https://wayland.fyi)
 
@@ -50,3 +50,8 @@ sudo samu -C build install
 credits
 -------
 an extremely large thank you to [michael forney](https://mforney.org) for creating the original [swc](https://github.com/michaelforney/swc) and [wld](https://github.com/michaelforney/wld), without his amazing work none of this would be possible! once they are more stable, we hope some of the changes from our neu* forks will eventually be upstreamed into the original projects.
+
+repositories
+------------
+[srcdump](https://srcdump.net/shrub/neuswc)
+[sourcehut](https://git.sr.ht/~shrub900/neuswc)

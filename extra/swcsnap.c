@@ -351,11 +351,27 @@ timespec_add_ns(struct timespec *ts, long ns)
 static void
 sleep_until(const struct timespec *deadline)
 {
-	int rc;
+	struct timespec now;
+	struct timespec remaining;
 
-	while ((rc = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, deadline,
-	                             NULL)) != 0) {
-		if (rc != EINTR) {
+	for (;;) {
+		if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+			return;
+		}
+
+		if (now.tv_sec > deadline->tv_sec ||
+		    (now.tv_sec == deadline->tv_sec && now.tv_nsec >= deadline->tv_nsec)) {
+			return;
+		}
+
+		remaining.tv_sec = deadline->tv_sec - now.tv_sec;
+		remaining.tv_nsec = deadline->tv_nsec - now.tv_nsec;
+		if (remaining.tv_nsec < 0) {
+			remaining.tv_nsec += 1000000000L;
+			remaining.tv_sec--;
+		}
+
+		if (nanosleep(&remaining, NULL) == 0 || errno != EINTR) {
 			return;
 		}
 	}

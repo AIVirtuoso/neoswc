@@ -1,8 +1,8 @@
 #include "decor.h"
 
 #include "compositor.h"
+#include "drm.h"
 #include "internal.h"
-#include "shm.h"
 #include "swc.h"
 #include "util.h"
 #include "window.h"
@@ -187,14 +187,18 @@ decor_parts_equal(struct compositor_view *view, const struct swc_decor_parts *pa
 static bool
 copy_decor_part(struct decor_part_buffer *dst, const struct swc_decor_part *src)
 {
-	union wld_object object;
-	size_t size;
+	size_t row_size, size;
 
 	if (decor_part_is_empty(src)) {
 		memset(dst, 0, sizeof(*dst));
 		return true;
 	}
 
+	row_size = (size_t)src->width * 4;
+	if (src->stride < row_size ||
+	    (src->height && src->stride > SIZE_MAX / src->height)) {
+		return false;
+	}
 	size = (size_t)src->stride * src->height;
 	dst->data = malloc(size);
 	if (!dst->data) {
@@ -205,15 +209,26 @@ copy_decor_part(struct decor_part_buffer *dst, const struct swc_decor_part *src)
 	dst->width = src->width;
 	dst->height = src->height;
 	dst->stride = src->stride;
-	object.ptr = dst->data;
-	dst->buffer = wld_import_buffer(swc.shm->context, WLD_OBJECT_DATA, object,
-	                                src->width, src->height,
-	                                WLD_FORMAT_ARGB8888, src->stride);
+	/* DRM renderers only allow read support for their native buffers not pixman/shmbuffers */
+	dst->buffer = wld_create_buffer(swc.drm->context, src->width, src->height,
+	                                WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
 	if (!dst->buffer) {
 		free(dst->data);
 		memset(dst, 0, sizeof(*dst));
 		return false;
 	}
+
+	if (dst->buffer->pitch < row_size || !wld_map(dst->buffer)) {
+		wld_buffer_unreference(dst->buffer);
+		free(dst->data);
+		memset(dst, 0, sizeof(*dst));
+		return false;
+	}
+	for (uint32_t y = 0; y < src->height; ++y) {
+		memcpy((uint8_t *)dst->buffer->map + (size_t)y * dst->buffer->pitch,
+		       (uint8_t *)dst->data + (size_t)y * src->stride, row_size);
+	}
+	wld_unmap(dst->buffer);
 
 	return true;
 }
