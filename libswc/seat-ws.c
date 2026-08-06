@@ -177,6 +177,7 @@ static struct wl_seat_interface seat_impl = {
     .get_pointer = get_pointer,
     .get_keyboard = get_keyboard,
     .get_touch = get_touch,
+    .release = destroy_resource,
 };
 
 static void
@@ -185,8 +186,8 @@ bind_seat(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	struct seat *seat = data;
 	struct wl_resource *resource;
 
-	if (version > 4) {
-		version = 4;
+	if (version > 5) {
+		version = 5;
 	}
 
 	resource = wl_resource_create(client, &wl_seat_interface, version, id);
@@ -419,7 +420,7 @@ seat_create(struct wl_display *display, const char *seat_name)
 	}
 
 	seat->global =
-	    wl_global_create(display, &wl_seat_interface, 4, seat, &bind_seat);
+	    wl_global_create(display, &wl_seat_interface, 5, seat, &bind_seat);
 	if (!seat->global) {
 		goto error2;
 	}
