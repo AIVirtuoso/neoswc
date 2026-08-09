@@ -28,9 +28,12 @@
  */
 
 #include "compositor.h"
+#include "backend.h"
 #include "data_device_manager.h"
 #include "decor.h"
+#ifdef ENABLE_DRM
 #include "drm.h"
+#endif
 #include "event.h"
 #include "internal.h"
 #include "launch.h"
@@ -52,7 +55,9 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef ENABLE_DRM
 #include <wld/drm.h>
+#endif
 #include <wld/wld.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -214,8 +219,14 @@ target_new(struct screen *screen)
 	}
 
 	target->surface =
-	    wld_create_surface(swc.drm->context, geom->width, geom->height,
-	                       WLD_FORMAT_XRGB8888, WLD_DRM_FLAG_SCANOUT);
+	    wld_create_surface(swc.backend->context, geom->width, geom->height,
+	                       WLD_FORMAT_XRGB8888,
+#ifdef ENABLE_DRM
+	                       WLD_DRM_FLAG_SCANOUT
+#else
+	                       WLD_FLAG_MAP
+#endif
+	    );
 
 	if (!target->surface) {
 		goto error1;
@@ -290,7 +301,7 @@ repaint_view(struct target *target, struct compositor_view *view,
 		pixman_region32_translate(&buffer_damage,
 		                          -geom->x + view->buffer_offset_x,
 		                          -geom->y + view->buffer_offset_y);
-		wld_copy_region(swc.drm->renderer, view->buffer, buf_x - target_geom->x,
+		wld_copy_region(swc.backend->renderer, view->buffer, buf_x - target_geom->x,
 		                buf_y - target_geom->y, &buffer_damage);
 	}
 
@@ -321,12 +332,12 @@ repaint_view(struct target *target, struct compositor_view *view,
 	if (view->border.outwidth > 0 && pixman_region32_not_empty(&out_border)) {
 		pixman_region32_translate(&out_border, -target_geom->x,
 		                          -target_geom->y);
-		wld_fill_region(swc.drm->renderer, view->border.outcolor, &out_border);
+		wld_fill_region(swc.backend->renderer, view->border.outcolor, &out_border);
 	}
 
 	if (view->border.inwidth > 0 && pixman_region32_not_empty(&in_border)) {
 		pixman_region32_translate(&in_border, -target_geom->x, -target_geom->y);
-		wld_fill_region(swc.drm->renderer, view->border.incolor, &in_border);
+		wld_fill_region(swc.backend->renderer, view->border.incolor, &in_border);
 	}
 
 	pixman_region32_fini(&border_damage);
@@ -336,7 +347,7 @@ repaint_view(struct target *target, struct compositor_view *view,
 
 	if ((view->decor.top || view->decor.right || view->decor.bottom ||
 	     view->decor.left)) {
-		decor_repaint(swc.drm->renderer, target_geom, view, damage);
+		decor_repaint(swc.backend->renderer, target_geom, view, damage);
 	}
 }
 
@@ -400,12 +411,12 @@ renderer_repaint(struct target *target, pixman_region32_t *damage,
 	      target->view->geometry.x, target->view->geometry.y,
 	      target->view->geometry.width, target->view->geometry.height);
 
-	wld_set_target_surface(swc.drm->renderer, target->surface);
+	wld_set_target_surface(swc.backend->renderer, target->surface);
 
 	if (pixman_region32_not_empty(base_damage)) {
 		pixman_region32_translate(base_damage, -target->view->geometry.x,
 		                          -target->view->geometry.y);
-		wld_fill_region(swc.drm->renderer, DEFAULT_BG,
+		wld_fill_region(swc.backend->renderer, DEFAULT_BG,
 		                base_damage);
 	}
 
@@ -416,9 +427,9 @@ renderer_repaint(struct target *target, pixman_region32_t *damage,
 		}
 	}
 
-	draw_overlays(swc.drm->renderer, target_geom);
+	draw_overlays(swc.backend->renderer, target_geom);
 
-	wld_flush(swc.drm->renderer);
+	wld_flush(swc.backend->renderer);
 }
 
 static int
@@ -427,7 +438,7 @@ renderer_attach(struct compositor_view *view, struct wld_buffer *client_buffer)
 	struct wld_buffer *buffer;
 	bool was_proxy = view->buffer != view->base.buffer;
 	bool needs_proxy =
-	    client_buffer && !(wld_capabilities(swc.drm->renderer, client_buffer) &
+	    client_buffer && !(wld_capabilities(swc.backend->renderer, client_buffer) &
 	                       WLD_CAPABILITY_READ);
 	bool resized = view->buffer && client_buffer &&
 	               (view->buffer->width != client_buffer->width ||
@@ -440,7 +451,7 @@ renderer_attach(struct compositor_view *view, struct wld_buffer *client_buffer)
 			if (!was_proxy || resized) {
 				DEBUG("Creating a proxy buffer\n");
 				buffer = wld_create_buffer(
-				    swc.drm->context, client_buffer->width,
+				    swc.backend->context, client_buffer->width,
 				    client_buffer->height, client_buffer->format, WLD_FLAG_MAP);
 
 				if (!buffer) {
@@ -1656,9 +1667,9 @@ update_screen(struct screen *screen)
 
 		pixman_region32_t full;
 		pixman_region32_init_rect(&full, 0, 0, geom->width, geom->height);
-		wld_set_target_surface(swc.drm->renderer, target->surface);
-		wld_copy_region(swc.drm->renderer, zoomed, 0, 0, &full);
-		wld_flush(swc.drm->renderer);
+		wld_set_target_surface(swc.backend->renderer, target->surface);
+		wld_copy_region(swc.backend->renderer, zoomed, 0, 0, &full);
+		wld_flush(swc.backend->renderer);
 		pixman_region32_fini(&full);
 
 		wld_buffer_unreference(zoomed);

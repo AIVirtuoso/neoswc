@@ -33,4 +33,8 @@ bool device_is_tty(dev_t);
 
 bool device_is_drm(dev_t);
 
+#ifdef ENABLE_FBDEV
+bool device_is_fbdev(dev_t);
+#endif
+
 #endif

@@ -7,8 +7,6 @@ libswc_src = files(
   'data_device.c',
   'data_device_manager.c',
   'decor.c',
-  'dmabuf.c',
-  'drm.c',
   'input.c',
   'kde_decoration.c',
   'keyboard.c',
@@ -18,7 +16,6 @@ libswc_src = files(
   'output.c',
   'panel.c',
   'panel_manager.c',
-  'plane.c',
   'pointer.c',
   'primary_plane.c',
   'region.c',
@@ -44,6 +41,9 @@ libswc_src = files(
   input_backend == 'wscons' ? 'seat-ws.c' : [],
 
   xwayland.found() ? ['xserver.c', 'xwm.c'] : [],  
+
+  video_backend == 'drm' ? ['dmabuf.c', 'drm.c', 'plane.c'] : [],
+  video_backend == 'fb' ? ['fb.c', 'fb_fbdev.c'] : [],
 )
 libswc_src += [cursor, launch_protocol]
 

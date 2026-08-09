@@ -23,6 +23,7 @@
 
 #include "mode.h"
 
+#ifdef ENABLE_DRM
 bool
 mode_initialize(struct mode *mode, drmModeModeInfo *mode_info)
 {
@@ -32,6 +33,17 @@ mode_initialize(struct mode *mode, drmModeModeInfo *mode_info)
 	mode->preferred = mode_info->type & DRM_MODE_TYPE_PREFERRED;
 	mode->info = *mode_info;
 	return true;
+}
+#endif
+
+void
+mode_initialize_simple(struct mode *mode, uint16_t width, uint16_t height,
+                       uint32_t refresh)
+{
+	mode->width = width;
+	mode->height = height;
+	mode->refresh = refresh;
+	mode->preferred = true;
 }
 
 bool

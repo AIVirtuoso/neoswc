@@ -24,29 +24,40 @@
 #ifndef SWC_PRIMARY_PLANE_H
 #define SWC_PRIMARY_PLANE_H
 
-#include "drm.h"
 #include "mode.h"
 #include "view.h"
+#ifdef ENABLE_DRM
+#include "drm.h"
+#endif
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-server.h>
 
 struct primary_plane {
+#ifdef ENABLE_DRM
 	uint32_t crtc;
 	drmModeCrtcPtr original_crtc_state;
+#endif
 	struct mode mode;
 	struct view view;
+#ifdef ENABLE_DRM
 	struct wl_array connectors;
 	bool need_modeset;
 	struct drm_handler drm_handler;
+#endif
 	struct wl_listener swc_listener;
 };
 
+#ifdef ENABLE_DRM
 bool
 primary_plane_initialize(struct primary_plane *plane, uint32_t crtc,
                          struct mode *mode, uint32_t *connectors,
                          uint32_t num_connectors);
+#else
+bool
+primary_plane_initialize(struct primary_plane *plane, struct mode *mode);
+#endif
 void
 primary_plane_finalize(struct primary_plane *plane);
 

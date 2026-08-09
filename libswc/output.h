@@ -4,7 +4,9 @@
 #include <pixman.h>
 #include <stdint.h>
 #include <wayland-util.h>
+#ifdef ENABLE_DRM
 #include <xf86drmMode.h>
+#endif
 
 struct wl_display;
 
@@ -21,16 +23,22 @@ struct output {
 
 	pixman_region32_t current_damage, previous_damage;
 
+#ifdef ENABLE_DRM
 	/* The DRM connector corresponding to this output */
 	uint32_t connector;
+#endif
 
 	struct wl_global *global;
 	struct wl_list resources;
 	struct wl_list link;
 };
 
+#ifdef ENABLE_DRM
 struct output *
 output_new(drmModeConnector *connector);
+#endif
+struct output *
+output_new_fb(uint32_t width, uint32_t height, const char *name);
 void
 output_destroy(struct output *output);
 

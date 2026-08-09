@@ -1,6 +1,8 @@
 #ifndef SWC_DRM_H
 #define SWC_DRM_H
 
+#include "backend.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -12,6 +14,7 @@ struct drm_handler {
 };
 
 struct swc_drm {
+	struct swc_backend backend;
 	int fd;
 	uint32_t cursor_w, cursor_h;
 	struct wld_context *context;

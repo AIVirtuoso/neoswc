@@ -51,7 +51,9 @@ struct screen {
 
 	struct wl_signal destroy_signal;
 	uint8_t id;
+#ifdef ENABLE_DRM
 	uint32_t crtc;
+#endif
 
 	struct {
 		struct primary_plane primary;
@@ -71,8 +73,13 @@ screens_initialize(void);
 void
 screens_finalize(void);
 
+#ifdef ENABLE_DRM
 struct screen *
 screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane);
+#else
+struct screen *
+screen_new(struct output *output);
+#endif
 void
 screen_destroy(struct screen *screen);
 

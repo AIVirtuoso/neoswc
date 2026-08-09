@@ -25,7 +25,11 @@
 #include "bindings.h"
 #include "compositor.h"
 #include "data_device_manager.h"
+#ifdef ENABLE_DRM
 #include "drm.h"
+#else
+#include "fb.h"
+#endif
 #include "event.h"
 #include "internal.h"
 #include "kde_decoration.h"
@@ -53,7 +57,9 @@
 extern struct swc_launch swc_launch;
 extern const struct swc_bindings swc_bindings;
 extern struct swc_compositor swc_compositor;
+#ifdef ENABLE_DRM
 extern struct swc_drm swc_drm;
+#endif
 #ifdef ENABLE_XWAYLAND
 extern struct swc_xserver swc_xserver;
 #endif
@@ -63,7 +69,9 @@ extern struct pointer_handler screens_pointer_handler;
 struct swc swc = {
     .bindings = &swc_bindings,
     .compositor = &swc_compositor,
+#ifdef ENABLE_DRM
     .drm = &swc_drm,
+#endif
 #ifdef ENABLE_XWAYLAND
     .xserver = &swc_xserver,
 #endif
@@ -160,8 +168,14 @@ swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
 		goto error0;
 	}
 
-	if (!drm_initialize()) {
-		ERROR("Could not initialize DRM\n");
+	if (!
+#ifdef ENABLE_DRM
+	    drm_initialize()
+#else
+	    fb_initialize()
+#endif
+	) {
+		ERROR("Could not initialize video backend\n");
 		goto error1;
 	}
 
@@ -302,7 +316,11 @@ error4:
 error3:
 	shm_destroy(swc.shm);
 error2:
+#ifdef ENABLE_DRM
 	drm_finalize();
+#else
+	fb_finalize();
+#endif
 error1:
 	launch_finalize();
 error0:
@@ -329,6 +347,10 @@ swc_finalize(void)
 	screens_finalize();
 	bindings_finalize();
 	shm_destroy(swc.shm);
+#ifdef ENABLE_DRM
 	drm_finalize();
+#else
+	fb_finalize();
+#endif
 	launch_finalize();
 }

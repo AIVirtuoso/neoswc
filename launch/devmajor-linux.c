@@ -50,3 +50,11 @@ device_is_drm(dev_t rdev)
 {
 	return major(rdev) == DRM_MAJOR;
 }
+
+#ifdef ENABLE_FBDEV
+bool
+device_is_fbdev(dev_t rdev)
+{
+	return major(rdev) == FB_MAJOR;
+}
+#endif

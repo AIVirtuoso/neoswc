@@ -22,12 +22,18 @@
  */
 
 #include "screen.h"
+#ifdef ENABLE_DRM
 #include "drm.h"
+#else
+#include "fb.h"
+#endif
 #include "event.h"
 #include "internal.h"
 #include "mode.h"
 #include "output.h"
+#ifdef ENABLE_DRM
 #include "plane.h"
+#endif
 #include "pointer.h"
 #include "util.h"
 
@@ -65,7 +71,13 @@ screens_initialize(void)
 {
 	wl_list_init(&swc.screens);
 
-	if (!drm_create_screens(&swc.screens)) {
+	if (!
+#ifdef ENABLE_DRM
+	    drm_create_screens(&swc.screens)
+#else
+	    fb_create_screens(&swc.screens)
+#endif
+	) {
 		return false;
 	}
 
@@ -103,7 +115,11 @@ bind_screen(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 }
 
 struct screen *
+#ifdef ENABLE_DRM
 screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane)
+#else
+screen_new(struct output *output)
+#endif
 {
 	struct screen *screen;
 	int32_t x = 0;
@@ -124,8 +140,8 @@ screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane)
 		goto error1;
 	}
 
+#ifdef ENABLE_DRM
 	screen->crtc = crtc;
-
 	if (!primary_plane_initialize(&screen->planes.primary,
 	                              crtc,
 	                              output->preferred_mode,
@@ -137,6 +153,14 @@ screen_new(uint32_t crtc, struct output *output, struct plane *cursor_plane)
 
 	cursor_plane->screen = screen;
 	screen->planes.cursor = cursor_plane;
+#else
+	if (!primary_plane_initialize(&screen->planes.primary,
+	                              output->preferred_mode)) {
+		ERROR("Failed to initialize primary plane\n");
+		goto error2;
+	}
+	screen->planes.cursor = NULL;
+#endif
 
 	screen->handler = &null_handler;
 	wl_signal_init(&screen->destroy_signal);
@@ -176,7 +200,11 @@ screen_destroy(struct screen *screen)
 	wl_list_for_each_safe(output, next, &screen->outputs, link)
 	    output_destroy(output);
 	primary_plane_finalize(&screen->planes.primary);
-	plane_destroy(screen->planes.cursor);
+#ifdef ENABLE_DRM
+	if (screen->planes.cursor) {
+		plane_destroy(screen->planes.cursor);
+	}
+#endif
 	free(screen);
 }
 

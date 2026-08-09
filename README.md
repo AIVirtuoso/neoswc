@@ -1,7 +1,7 @@
 neuswc
 ------
 
-neuswc is a fork of [swc](https://github.com/michaelforney/swc/) created by [wayland.fyi](https://wayland.fyi). it provides an easy C library interface to make a wayland compositor. it is much smaller than alternatives like wlroots, and easier to use. it is also portable to linux, freebsd, netbsd, and openbsd. if you want tohelp with that (or anything else) submit a patch to the [mailing list](https://lists.sr.ht/~shrub900/neuswc)
+neuswc is a fork of [swc](https://github.com/michaelforney/swc/) created by [wayland.fyi](https://wayland.fyi). it provides an easy C library interface to make a wayland compositor. it is much smaller than alternatives like wlroots, and easier to use. it is also portable to linux, freebsd, netbsd, and openbsd. if you want to help with that (or anything else) submit a patch to the [mailing list](https://lists.sr.ht/~shrub900/neuswc)
 
 you can view a list of some compositors made with neuswc at the [wayland.fyi website.](https://wayland.fyi)
 
@@ -20,6 +20,7 @@ neu features
 - screenshots
 - layer shell support
 - window decorations
+- framebuffer support
 
 neuswc is in active development, we plan to add many more features, and increase compatibility with new wayland protocols.
 
@@ -32,7 +33,8 @@ you will need:
 - pkg-config
 - wayland-scanner, wayland-server, wayland-client
 - wayland-server, wayland-client
-- libdrm, pixman, xkbcommon
+- libdrm (if  building with DRM support) 
+- pixman, xkbcommon
 - [neuwld](https://git.sr.ht/~shrub900/neuwld)
 - libinput on Linux and wscons on BSD
 - xcb, xcb-composite, xcb-ewmh and xcb-icccm if you want Xwayland support.
@@ -52,5 +54,6 @@ an extremely large thank you to [michael forney](https://mforney.org) for creati
 
 repositories
 ------------
-[srcdump](https://srcdump.net/shrub/neuswc)
-[sourcehut](https://git.sr.ht/~shrub900/neuswc)
+
+- [srcdump](https://srcdump.net/shrub/neuswc)
+- [sourcehut](https://git.sr.ht/~shrub900/neuswc)

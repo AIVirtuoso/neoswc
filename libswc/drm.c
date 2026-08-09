@@ -290,6 +290,9 @@ drm_initialize(void)
 		val = 64;
 	}
 	swc.drm->cursor_h = val;
+	swc.backend = &swc.drm->backend;
+	swc.backend->cursor_width = swc.drm->cursor_w;
+	swc.backend->cursor_height = swc.drm->cursor_h;
 
 	drm.path = drmGetRenderDeviceNameFromFd(swc.drm->fd);
 	if (!drm.path) {
@@ -306,6 +309,8 @@ drm_initialize(void)
 		ERROR("Could not create WLD DRM renderer\n");
 		goto error2;
 	}
+	swc.backend->context = swc.drm->context;
+	swc.backend->renderer = swc.drm->renderer;
 
 	drm.event_source = wl_event_loop_add_fd(
 	    swc.event_loop, swc.drm->fd, WL_EVENT_READABLE, &handle_data, NULL);

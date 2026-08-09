@@ -44,7 +44,10 @@ struct swc {
 	struct wl_list screens;
 	struct swc_compositor *const compositor;
 	struct swc_shm *shm;
+#ifdef ENABLE_DRM
 	struct swc_drm *const drm;
+#endif
+	struct swc_backend *backend;
 	struct wl_global *data_device_manager;
 	struct wl_global *kde_decoration_manager;
 	struct wl_global *layer_shell;

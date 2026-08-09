@@ -31,14 +31,34 @@ requires = [
   dependency('wayland-server', version: '>=1.6.0'),
 ]
 requires_private = [
-  dependency('libdrm'),
   dependency('pixman-1'),
   dependency('wayland-protocols'),
   dependency('wld'),
   dependency('xkbcommon'),
 ]
 
-xwayland = dependency('xwayland', required: get_option('xwayland'))
+video_backend = get_option('video')
+drm = disabler()
+if video_backend == 'drm'
+  drm = dependency('libdrm')
+  requires_private += drm
+  add_project_arguments('-DENABLE_DRM=1', language: 'c')
+elif video_backend == 'fb'
+  if os != 'linux'
+    error('The fb video backend is currently supported only on Linux')
+  endif
+  add_project_arguments([
+    '-DENABLE_FBDEV=1',
+    '-DFBDEV_DEVICE="@0@"'.format(get_option('fbdev-device')),
+  ], language: 'c')
+endif
+
+if video_backend != 'drm' and get_option('xwayland').enabled()
+  error('Xwayland requires the DRM video backend')
+endif
+xwayland = video_backend == 'drm' \
+  ? dependency('xwayland', required: get_option('xwayland')) \
+  : disabler()
 xwayland_deps = [
   'xcb',
   'xcb-composite',
@@ -93,4 +113,5 @@ endif
 summary({
   'Xwayland support': xwayland.found(),
   'Input backend': input_backend,
+  'Video backend': video_backend,
 }, bool_yn: true)

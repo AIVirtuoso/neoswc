@@ -27,7 +27,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#ifdef ENABLE_DRM
 #include <xf86drmMode.h>
+#endif
 
 struct mode {
 	uint16_t width, height;
@@ -35,11 +37,18 @@ struct mode {
 
 	bool preferred;
 
+#ifdef ENABLE_DRM
 	drmModeModeInfo info;
+#endif
 };
 
+#ifdef ENABLE_DRM
 bool
 mode_initialize(struct mode *mode, drmModeModeInfo *mode_info);
+#endif
+void
+mode_initialize_simple(struct mode *mode, uint16_t width, uint16_t height,
+                       uint32_t refresh);
 bool
 mode_equal(const struct mode *mode1, const struct mode *mode2);
 

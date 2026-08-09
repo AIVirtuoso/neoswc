@@ -1,15 +1,19 @@
 #include "output.h"
+#ifdef ENABLE_DRM
 #include "drm.h"
+#endif
 #include "internal.h"
 #include "mode.h"
 #include "screen.h"
 #include "util.h"
 
+#ifdef ENABLE_DRM
 #include <drm.h>
+#include <xf86drm.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <xf86drm.h>
 
 static const struct wl_output_interface output_impl = {
     .release = destroy_resource,
@@ -65,6 +69,7 @@ bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	}
 }
 
+#ifdef ENABLE_DRM
 struct output *
 output_new(drmModeConnectorPtr connector)
 {
@@ -131,6 +136,38 @@ error1:
 	free(output);
 error0:
 	return NULL;
+}
+#endif
+
+struct output *
+output_new_fb(uint32_t width, uint32_t height, const char *name)
+{
+	struct output *output;
+	struct mode *mode;
+
+	output = calloc(1, sizeof(*output));
+	if (!output) {
+		return NULL;
+	}
+	output->global = wl_global_create(swc.display, &wl_output_interface, 4,
+	                                  output, &bind_output);
+	if (!output->global) {
+		free(output);
+		return NULL;
+	}
+	wl_list_init(&output->resources);
+	wl_array_init(&output->modes);
+	pixman_region32_init(&output->current_damage);
+	pixman_region32_init(&output->previous_damage);
+	mode = wl_array_add(&output->modes, sizeof(*mode));
+	if (!mode) {
+		output_destroy(output);
+		return NULL;
+	}
+	mode_initialize_simple(mode, width, height, 60000);
+	output->preferred_mode = mode;
+	snprintf(output->name, sizeof(output->name), "%s", name);
+	return output;
 }
 
 void

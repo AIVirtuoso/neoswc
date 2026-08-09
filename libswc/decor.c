@@ -1,4 +1,5 @@
 #include "decor.h"
+#include "backend.h"
 
 #include "compositor.h"
 #include "drm.h"
@@ -210,7 +211,7 @@ copy_decor_part(struct decor_part_buffer *dst, const struct swc_decor_part *src)
 	dst->height = src->height;
 	dst->stride = src->stride;
 	/* DRM renderers only allow read support for their native buffers not pixman/shmbuffers */
-	dst->buffer = wld_create_buffer(swc.drm->context, src->width, src->height,
+	dst->buffer = wld_create_buffer(swc.backend->context, src->width, src->height,
 	                                WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
 	if (!dst->buffer) {
 		free(dst->data);
