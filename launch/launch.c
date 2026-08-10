@@ -303,6 +303,12 @@ handle_socket_data(int socket)
 				goto fail;
 			}
 #endif
+#ifdef ENABLE_WSDISPLAY
+		} else if (device_is_tty(st.st_rdev)) {
+			if (!active) {
+				goto fail;
+			}
+#endif
 		} else {
 			fprintf(stderr, "requested fd is not a video or input device\n");
 			goto fail;
@@ -646,6 +652,9 @@ main(int argc, char *argv[])
 	fprintf(stderr, "running on %s\n", vt);
 	tty_fd = open_tty(vt);
 	setup_tty(tty_fd);
+	if (setenv(SWC_LAUNCH_TTY_ENV, vt, 1) == -1) {
+		die("setenv %s:", SWC_LAUNCH_TTY_ENV);
+	}
 
 	sprintf(buf, "%d", sock[1]);
 	setenv(SWC_LAUNCH_SOCKET_ENV, buf, 1);

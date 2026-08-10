@@ -25,8 +25,9 @@ void fb_finalize(void);
 bool fb_create_screens(struct wl_list *screens);
 bool fb_present(struct wld_buffer *buffer, int32_t x, int32_t y);
 
-bool fbdev_initialize(struct swc_fb *fb);
-void fbdev_finalize(struct swc_fb *fb);
-bool fbdev_present(struct swc_fb *fb);
+bool framebuffer_initialize(struct swc_fb *fb);
+void framebuffer_finalize(struct swc_fb *fb);
+bool framebuffer_present(struct swc_fb *fb);
+const char *framebuffer_name(void);
 
 #endif

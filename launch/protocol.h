@@ -29,6 +29,7 @@
 #include <sys/types.h>
 
 #define SWC_LAUNCH_SOCKET_ENV "SWC_LAUNCH_SOCKET"
+#define SWC_LAUNCH_TTY_ENV "SWC_LAUNCH_TTY"
 
 struct iovec;
 

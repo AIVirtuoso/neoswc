@@ -32,7 +32,7 @@ blend(uint32_t background, uint32_t foreground)
 bool
 fb_initialize(void)
 {
-	if (!fbdev_initialize(&swc_fb)) {
+	if (!framebuffer_initialize(&swc_fb)) {
 		return false;
 	}
 	swc_fb.pitch = (size_t)swc_fb.width * sizeof(*swc_fb.pixels);
@@ -58,7 +58,7 @@ error2:
 error1:
 	free(swc_fb.pixels);
 error0:
-	fbdev_finalize(&swc_fb);
+	framebuffer_finalize(&swc_fb);
 	return false;
 }
 
@@ -68,7 +68,7 @@ fb_finalize(void)
 	wld_destroy_renderer(swc_fb.backend.renderer);
 	wld_destroy_context(swc_fb.backend.context);
 	free(swc_fb.pixels);
-	fbdev_finalize(&swc_fb);
+	framebuffer_finalize(&swc_fb);
 }
 
 bool
@@ -77,7 +77,7 @@ fb_create_screens(struct wl_list *screens)
 	struct output *output;
 	struct screen *screen;
 
-	output = output_new_fb(swc_fb.width, swc_fb.height, "fbdev-0");
+	output = output_new_fb(swc_fb.width, swc_fb.height, framebuffer_name());
 	if (!output) {
 		return false;
 	}
@@ -138,5 +138,5 @@ fb_present(struct wld_buffer *buffer, int32_t origin_x, int32_t origin_y)
 		wld_unmap(cursor);
 	}
 	wld_unmap(buffer);
-	return fbdev_present(&swc_fb);
+	return framebuffer_present(&swc_fb);
 }

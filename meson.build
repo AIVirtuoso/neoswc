@@ -38,19 +38,43 @@ requires_private = [
 ]
 
 video_backend = get_option('video')
+framebuffer_backend = get_option('fb')
 drm = disabler()
 if video_backend == 'drm'
+  if framebuffer_backend != 'auto'
+    error('-Dfb applies only when -Dvideo=fb')
+  endif
   drm = dependency('libdrm')
   requires_private += drm
   add_project_arguments('-DENABLE_DRM=1', language: 'c')
 elif video_backend == 'fb'
-  if os != 'linux'
-    error('The fb video backend is currently supported only on Linux')
+  if framebuffer_backend == 'auto'
+    if os == 'linux'
+      framebuffer_backend = 'fbdev'
+    elif os == 'netbsd' or os == 'openbsd'
+      framebuffer_backend = 'wsdisplay'
+    else
+      error('Failed to determine framebuffer interface for ' + os)
+    endif
   endif
-  add_project_arguments([
-    '-DENABLE_FBDEV=1',
-    '-DFBDEV_DEVICE="@0@"'.format(get_option('fbdev-device')),
-  ], language: 'c')
+
+  if framebuffer_backend == 'fbdev'
+    if os != 'linux'
+      error('The fbdev framebuffer interface is supported only on Linux')
+    endif
+    add_project_arguments([
+      '-DENABLE_FBDEV=1',
+      '-DFBDEV_DEVICE="@0@"'.format(get_option('fbdev-device')),
+    ], language: 'c')
+  elif framebuffer_backend == 'wsdisplay'
+    if os != 'netbsd' and os != 'openbsd'
+      error('The wsdisplay framebuffer interface is supported only on NetBSD and OpenBSD')
+    endif
+    add_project_arguments([
+      '-DENABLE_WSDISPLAY=1',
+      '-DWSDISPLAY_DEVICE="@0@"'.format(get_option('wsdisplay-device')),
+    ], language: 'c')
+  endif
 endif
 
 if video_backend != 'drm' and get_option('xwayland').enabled()
@@ -114,4 +138,5 @@ summary({
   'Xwayland support': xwayland.found(),
   'Input backend': input_backend,
   'Video backend': video_backend,
+  'Framebuffer interface': video_backend == 'fb' ? framebuffer_backend : 'n/a',
 }, bool_yn: true)

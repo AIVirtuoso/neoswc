@@ -37,7 +37,7 @@ channel_from_fbdev(struct fb_bitfield field)
 }
 
 bool
-fbdev_initialize(struct swc_fb *fb)
+framebuffer_initialize(struct swc_fb *fb)
 {
 	struct fb_fix_screeninfo fixed;
 	struct fb_var_screeninfo variable;
@@ -120,7 +120,7 @@ error:
 }
 
 void
-fbdev_finalize(struct swc_fb *fb)
+framebuffer_finalize(struct swc_fb *fb)
 {
 	(void)fb;
 	munmap(fbdev.memory, fbdev.memory_length);
@@ -168,7 +168,7 @@ store_pixel(uint8_t *destination, uint32_t pixel)
 }
 
 bool
-fbdev_present(struct swc_fb *fb)
+framebuffer_present(struct swc_fb *fb)
 {
 	uint32_t bytes = fbdev.bits_per_pixel / 8;
 	uint32_t x, y;
@@ -182,4 +182,10 @@ fbdev_present(struct swc_fb *fb)
 		}
 	}
 	return true;
+}
+
+const char *
+framebuffer_name(void)
+{
+	return "fbdev-0";
 }
