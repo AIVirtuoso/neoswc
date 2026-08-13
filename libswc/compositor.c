@@ -301,8 +301,32 @@ repaint_view(struct target *target, struct compositor_view *view,
 		pixman_region32_translate(&buffer_damage,
 		                          -geom->x + view->buffer_offset_x,
 		                          -geom->y + view->buffer_offset_y);
-		wld_copy_region(swc.backend->renderer, view->buffer, buf_x - target_geom->x,
-		                buf_y - target_geom->y, &buffer_damage);
+		if (view->buffer->format == WLD_FORMAT_ARGB8888) {
+			pixman_region32_t opaque_damage, blend_damage;
+
+			/* keep pixels that we know are opaque on the accelerated path; only
+			 * pixels which might have alpha need blending. */
+			pixman_region32_init(&opaque_damage);
+			pixman_region32_intersect(&opaque_damage, &buffer_damage,
+			                          &view->surface->state.opaque);
+			pixman_region32_init(&blend_damage);
+			pixman_region32_subtract(&blend_damage, &buffer_damage,
+			                         &opaque_damage);
+
+			wld_copy_region(swc.backend->renderer, view->buffer,
+			                buf_x - target_geom->x, buf_y - target_geom->y,
+			                &opaque_damage);
+			wld_blend_region(swc.backend->renderer, view->buffer,
+			                 buf_x - target_geom->x, buf_y - target_geom->y,
+			                 &blend_damage);
+
+			pixman_region32_fini(&blend_damage);
+			pixman_region32_fini(&opaque_damage);
+		} else {
+			wld_copy_region(swc.backend->renderer, view->buffer,
+			                buf_x - target_geom->x, buf_y - target_geom->y,
+			                &buffer_damage);
+		}
 	}
 
 	pixman_region32_fini(&view_damage);
