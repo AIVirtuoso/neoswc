@@ -447,7 +447,8 @@ struct swc_decor_text {
  * swc copies the pixel data when swc_window_set_decor() is called, so caller
  * doesn't need to keep it after the call returns.
  *
- * Pixel data is expected to be ARGB8888 with the provided stride.
+ * Pixel data is expected to be premultiplied ARGB8888 with the provided
+ * stride.
  */
 struct swc_decor_part {
 	uint32_t width, height;

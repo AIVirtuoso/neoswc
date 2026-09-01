@@ -329,18 +329,34 @@ draw_decor_part(struct wld_renderer *renderer,
 				int32_t clip_y2 = MIN(tile_y + (int32_t)part->height, ry2);
 
 				if (clip_x2 > clip_x1 && clip_y2 > clip_y1) {
-					wld_copy_rectangle(renderer, part->buffer,
-					                   clip_x1 - target_geom->x,
-					                   clip_y1 - target_geom->y,
-					                   clip_x1 - tile_x, clip_y1 - tile_y,
-					                   (uint32_t)(clip_x2 - clip_x1),
-					                   (uint32_t)(clip_y2 - clip_y1));
+					pixman_region32_t source_region;
+
+					pixman_region32_init_rect(
+					    &source_region, clip_x1 - tile_x, clip_y1 - tile_y,
+					    (uint32_t)(clip_x2 - clip_x1),
+					    (uint32_t)(clip_y2 - clip_y1));
+					wld_blend_region(renderer, part->buffer,
+					                 tile_x - target_geom->x,
+					                 tile_y - target_geom->y, &source_region);
+					pixman_region32_fini(&source_region);
 				}
 			}
 		}
 	}
 
 	pixman_region32_fini(&region);
+}
+
+static bool
+decor_parts_complete(struct compositor_view *view)
+{
+	for (uint32_t i = 0; i < DECOR_PART_COUNT; ++i) {
+		if (!view->decor.parts[i].buffer) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool
@@ -417,7 +433,8 @@ decor_repaint(struct wld_renderer *renderer,
 	pixman_region32_subtract(&decor_region, &decor_region, &content_region);
 	pixman_region32_intersect(&decor_region, &decor_region, damage);
 	pixman_region32_subtract(&decor_region, &decor_region, &view->clip);
-	if (pixman_region32_not_empty(&decor_region)) {
+	if (!decor_parts_complete(view) &&
+	    pixman_region32_not_empty(&decor_region)) {
 		pixman_region32_translate(&decor_region, -target_geom->x, -target_geom->y);
 		wld_fill_region(renderer, view->decor.color, &decor_region);
 		pixman_region32_translate(&decor_region, target_geom->x, target_geom->y);
@@ -447,6 +464,8 @@ decor_repaint(struct wld_renderer *renderer,
 		                &view->decor.parts[DECOR_PART_TOP],
 		                outer_x + (int32_t)tl_width, outer_y,
 		                outer_width - tl_width - tr_width, view->decor.top);
+	}
+	if (outer_width > bl_width + br_width) {
 		draw_decor_part(renderer, target_geom, view, damage,
 		                &view->decor.parts[DECOR_PART_BOTTOM],
 		                outer_x + (int32_t)bl_width,
@@ -459,6 +478,8 @@ decor_repaint(struct wld_renderer *renderer,
 		                &view->decor.parts[DECOR_PART_LEFT], outer_x,
 		                outer_y + (int32_t)tl_height, view->decor.left,
 		                outer_height - tl_height - bl_height);
+	}
+	if (outer_height > tr_height + br_height) {
 		draw_decor_part(renderer, target_geom, view, damage,
 		                &view->decor.parts[DECOR_PART_RIGHT],
 		                outer_x + (int32_t)outer_width - (int32_t)view->decor.right,
