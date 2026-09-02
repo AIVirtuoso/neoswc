@@ -251,6 +251,66 @@ error0:
 
 /* Rendering {{{ */
 
+/* check the client's window buffer is opaque */
+static bool
+view_buffer_is_opaque(struct compositor_view *view)
+{
+	const struct swc_rectangle *geom = &view->base.geometry;
+	struct wld_buffer *buffer = view->base.buffer;
+	uint32_t x1, y1, width, height;
+
+	if (view->buffer_opaque_valid) {
+		return view->buffer_opaque;
+	}
+
+	view->buffer_opaque_valid = true;
+	view->buffer_opaque = false;
+	if (!buffer || buffer->format != WLD_FORMAT_ARGB8888) {
+		return false;
+	}
+
+	if (view->window) {
+		if (view->buffer_offset_x < 0 || view->buffer_offset_y < 0) {
+			return false;
+		}
+		x1 = (uint32_t)view->buffer_offset_x;
+		y1 = (uint32_t)view->buffer_offset_y;
+		width = geom->width;
+		height = geom->height;
+	} else {
+		x1 = 0;
+		y1 = 0;
+		width = buffer->width;
+		height = buffer->height;
+	}
+
+	if (x1 > buffer->width || y1 > buffer->height ||
+	    width > buffer->width - x1 || height > buffer->height - y1 ||
+	    !wld_map(buffer)) {
+		return false;
+	}
+
+	view->buffer_opaque = true;
+	for (uint32_t y = 0; y < height && view->buffer_opaque; ++y) {
+		const uint8_t *row = (const uint8_t *)buffer->map +
+		                     (size_t)(y1 + y) * buffer->pitch +
+		                     (size_t)x1 * 4;
+
+		for (uint32_t x = 0; x < width; ++x) {
+			uint32_t pixel;
+
+			memcpy(&pixel, row + (size_t)x * 4, sizeof(pixel));
+			if ((pixel >> 24) != 0xff) {
+				view->buffer_opaque = false;
+				break;
+			}
+		}
+	}
+	wld_unmap(buffer);
+
+	return view->buffer_opaque;
+}
+
 static void
 repaint_view(struct target *target, struct compositor_view *view,
              pixman_region32_t *damage)
@@ -313,12 +373,19 @@ repaint_view(struct target *target, struct compositor_view *view,
 			pixman_region32_subtract(&blend_damage, &buffer_damage,
 			                         &opaque_damage);
 
-			wld_copy_region(swc.backend->renderer, view->buffer,
-			                buf_x - target_geom->x, buf_y - target_geom->y,
-			                &opaque_damage);
-			wld_blend_region(swc.backend->renderer, view->buffer,
-			                 buf_x - target_geom->x, buf_y - target_geom->y,
-			                 &blend_damage);
+			if (!pixman_region32_not_empty(&blend_damage) ||
+			    view_buffer_is_opaque(view)) {
+				wld_copy_region(swc.backend->renderer, view->buffer,
+				                buf_x - target_geom->x,
+				                buf_y - target_geom->y, &buffer_damage);
+			} else {
+				wld_copy_region(swc.backend->renderer, view->buffer,
+				                buf_x - target_geom->x,
+				                buf_y - target_geom->y, &opaque_damage);
+				wld_blend_region(swc.backend->renderer, view->buffer,
+				                 buf_x - target_geom->x,
+				                 buf_y - target_geom->y, &blend_damage);
+			}
 
 			pixman_region32_fini(&blend_damage);
 			pixman_region32_fini(&opaque_damage);
@@ -460,23 +527,34 @@ static int
 renderer_attach(struct compositor_view *view, struct wld_buffer *client_buffer)
 {
 	struct wld_buffer *buffer;
+	uint32_t proxy_width, proxy_height;
 	bool was_proxy = view->buffer != view->base.buffer;
 	bool needs_proxy =
 	    client_buffer && !(wld_capabilities(swc.backend->renderer, client_buffer) &
 	                       WLD_CAPABILITY_READ);
-	bool resized = view->buffer && client_buffer &&
-	               (view->buffer->width != client_buffer->width ||
-	                view->buffer->height != client_buffer->height);
+	bool proxy_incompatible =
+	    view->buffer && client_buffer &&
+	    (view->buffer->format != client_buffer->format ||
+	     view->buffer->width < client_buffer->width ||
+	     view->buffer->height < client_buffer->height);
 
 	if (client_buffer) {
 		/* Create a proxy buffer if necessary (for example a hardware buffer
 		 * backing a SHM buffer). */
 		if (needs_proxy) {
-			if (!was_proxy || resized) {
+			if (!was_proxy || proxy_incompatible) {
 				DEBUG("Creating a proxy buffer\n");
+				proxy_width = client_buffer->width;
+				proxy_height = client_buffer->height;
+				if (proxy_width <= UINT32_MAX - 255) {
+					proxy_width = (proxy_width + 255) & ~255U;
+				}
+				if (proxy_height <= UINT32_MAX - 255) {
+					proxy_height = (proxy_height + 255) & ~255U;
+				}
 				buffer = wld_create_buffer(
-				    swc.backend->context, client_buffer->width,
-				    client_buffer->height, client_buffer->format, WLD_FLAG_MAP);
+				    swc.backend->context, proxy_width, proxy_height,
+				    client_buffer->format, WLD_FLAG_MAP);
 
 				if (!buffer) {
 					return -ENOMEM;
@@ -495,11 +573,13 @@ renderer_attach(struct compositor_view *view, struct wld_buffer *client_buffer)
 	/* If we no longer need a proxy buffer, or the original buffer is of a
 	 * different size, destroy the old proxy image. */
 	if (view->buffer &&
-	    ((!needs_proxy && was_proxy) || (needs_proxy && resized))) {
+	    ((!needs_proxy && was_proxy) ||
+	     (needs_proxy && was_proxy && proxy_incompatible))) {
 		wld_buffer_unreference(view->buffer);
 	}
 
 	view->buffer = buffer;
+	view->buffer_opaque_valid = false;
 
 	return 0;
 }
@@ -1032,7 +1112,7 @@ move(struct view *base, int32_t x, int32_t y)
 		if (view->visible) {
 			/* Assume worst-case no clipping until we draw the next frame (in
 			 * case the surface gets moved again before that). */
-			pixman_region32_init(&view->clip);
+			pixman_region32_clear(&view->clip);
 
 			view_update_screens(&view->base);
 			damage_below_view(view);
@@ -1355,6 +1435,8 @@ compositor_create_view(struct surface *surface)
 	view_initialize(&view->base, &view_impl);
 	view->surface = surface;
 	view->buffer = NULL;
+	view->buffer_opaque_valid = false;
+	view->buffer_opaque = false;
 	view->window = NULL;
 	view->parent = NULL;
 	view->buffer_offset_x = 0;
@@ -1613,6 +1695,7 @@ calculate_damage(void)
 		surface_damage = &view->surface->state.damage;
 
 		if (pixman_region32_not_empty(surface_damage)) {
+			view->buffer_opaque_valid = false;
 			renderer_flush_view(view);
 
 			/* Translate surface damage to global coordinates. */

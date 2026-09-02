@@ -133,6 +133,10 @@ static void
 close_decor_parts(struct compositor_view *view)
 {
 	for (uint32_t i = 0; i < DECOR_PART_COUNT; ++i) {
+		if (view->decor.parts[i].tiled_buffer) {
+			wld_buffer_unreference(view->decor.parts[i].tiled_buffer);
+			view->decor.parts[i].tiled_buffer = NULL;
+		}
 		if (view->decor.parts[i].buffer) {
 			wld_buffer_unreference(view->decor.parts[i].buffer);
 			view->decor.parts[i].buffer = NULL;
@@ -142,6 +146,9 @@ close_decor_parts(struct compositor_view *view)
 		view->decor.parts[i].width = 0;
 		view->decor.parts[i].height = 0;
 		view->decor.parts[i].stride = 0;
+		view->decor.parts[i].tiled_width = 0;
+		view->decor.parts[i].tiled_height = 0;
+		view->decor.parts[i].opaque = false;
 	}
 	view->decor.parts_key = NULL;
 }
@@ -210,6 +217,20 @@ copy_decor_part(struct decor_part_buffer *dst, const struct swc_decor_part *src)
 	dst->width = src->width;
 	dst->height = src->height;
 	dst->stride = src->stride;
+	dst->opaque = true;
+	for (uint32_t y = 0; y < src->height && dst->opaque; ++y) {
+		const uint8_t *row = (const uint8_t *)src->data + (size_t)y * src->stride;
+
+		for (uint32_t x = 0; x < src->width; ++x) {
+			uint32_t pixel;
+
+			memcpy(&pixel, row + (size_t)x * 4, sizeof(pixel));
+			if ((pixel >> 24) != 0xff) {
+				dst->opaque = false;
+				break;
+			}
+		}
+	}
 	/* DRM renderers only allow read support for their native buffers not pixman/shmbuffers */
 	dst->buffer = wld_create_buffer(swc.backend->context, src->width, src->height,
 	                                WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
@@ -279,69 +300,99 @@ close_decor_string(struct compositor_view *view)
 	view->decor.string = NULL;
 }
 
-/* draw decor part by tiling it across the target region.
- * the part buffer is repeated to fill the entirety of some width x height area,
- * but only damaged regions are actually rendered */
+static struct wld_buffer *
+get_tiled_decor_buffer(struct decor_part_buffer *part, uint32_t width,
+                       uint32_t height)
+{
+	struct wld_buffer *buffer;
+	uint32_t buffer_width = width, buffer_height = height;
+	size_t row_size;
+
+	if (width == part->width && height == part->height) {
+		return part->buffer;
+	}
+	if (part->tiled_buffer && part->tiled_width >= width &&
+	    part->tiled_height >= height) {
+		return part->tiled_buffer;
+	}
+
+	if (part->tiled_buffer) {
+		wld_buffer_unreference(part->tiled_buffer);
+		part->tiled_buffer = NULL;
+		part->tiled_width = 0;
+		part->tiled_height = 0;
+	}
+
+	if (width != part->width && width <= UINT32_MAX - 255) {
+		buffer_width = (width + 255) & ~255U;
+	}
+	if (height != part->height && height <= UINT32_MAX - 255) {
+		buffer_height = (height + 255) & ~255U;
+	}
+
+	if (buffer_width > SIZE_MAX / 4) {
+		return NULL;
+	}
+	row_size = (size_t)buffer_width * 4;
+	buffer = wld_create_buffer(swc.backend->context, buffer_width, buffer_height,
+	                           WLD_FORMAT_ARGB8888, WLD_FLAG_MAP);
+	if (!buffer || buffer->pitch < row_size || !wld_map(buffer)) {
+		if (buffer) {
+			wld_buffer_unreference(buffer);
+		}
+		return NULL;
+	}
+
+	for (uint32_t y = 0; y < buffer_height; ++y) {
+		uint8_t *dst = (uint8_t *)buffer->map + (size_t)y * buffer->pitch;
+		const uint8_t *src = (const uint8_t *)part->data +
+		                     (size_t)(y % part->height) * part->stride;
+
+		for (uint32_t x = 0; x < buffer_width; x += part->width) {
+			uint32_t copy_width = MIN(part->width, buffer_width - x);
+
+			memcpy(dst + (size_t)x * 4, src, (size_t)copy_width * 4);
+		}
+	}
+	wld_unmap(buffer);
+
+	part->tiled_buffer = buffer;
+	part->tiled_width = buffer_width;
+	part->tiled_height = buffer_height;
+	return buffer;
+}
+
+/* draw the decor part by tiling it across the target reigon.  
+ * the part buffer is repeated to fill the entirety of some width x height area
+ * but then we cache the expanded version so it can be just one op
+ * instead of one op per every time we repeat it */
 static void
 draw_decor_part(struct wld_renderer *renderer,
                 const struct swc_rectangle *target_geom,
                 struct compositor_view *view, pixman_region32_t *damage,
-                const struct decor_part_buffer *part, int32_t x, int32_t y,
+                struct decor_part_buffer *part, int32_t x, int32_t y,
                 uint32_t width, uint32_t height)
 {
 	pixman_region32_t region;
-	pixman_box32_t *boxes;
-	int nboxes;
+	struct wld_buffer *buffer;
 
 	if (!part->buffer || !part->width || !part->height || !width || !height) {
+		return;
+	}
+	if (!(buffer = get_tiled_decor_buffer(part, width, height))) {
 		return;
 	}
 
 	pixman_region32_init_rect(&region, x, y, width, height);
 	pixman_region32_intersect(&region, &region, damage);
 	pixman_region32_subtract(&region, &region, &view->clip);
-	boxes = pixman_region32_rectangles(&region, &nboxes);
-
-	for (int i = 0; i < nboxes; ++i) {
-		int32_t rx1 = boxes[i].x1;
-		int32_t ry1 = boxes[i].y1;
-		int32_t rx2 = boxes[i].x2;
-		int32_t ry2 = boxes[i].y2;
-		int32_t start_y = y + ((ry1 - y) / (int32_t)part->height) * (int32_t)part->height;
-
-		if (start_y > ry1) {
-			start_y -= (int32_t)part->height;
-		}
-
-		for (int32_t tile_y = start_y; tile_y < ry2; tile_y += (int32_t)part->height) {
-			int32_t start_x =
-			    x + ((rx1 - x) / (int32_t)part->width) * (int32_t)part->width;
-
-			if (start_x > rx1) {
-				start_x -= (int32_t)part->width;
-			}
-
-			for (int32_t tile_x = start_x; tile_x < rx2;
-			     tile_x += (int32_t)part->width) {
-				int32_t clip_x1 = MAX(tile_x, rx1);
-				int32_t clip_y1 = MAX(tile_y, ry1);
-				int32_t clip_x2 = MIN(tile_x + (int32_t)part->width, rx2);
-				int32_t clip_y2 = MIN(tile_y + (int32_t)part->height, ry2);
-
-				if (clip_x2 > clip_x1 && clip_y2 > clip_y1) {
-					pixman_region32_t source_region;
-
-					pixman_region32_init_rect(
-					    &source_region, clip_x1 - tile_x, clip_y1 - tile_y,
-					    (uint32_t)(clip_x2 - clip_x1),
-					    (uint32_t)(clip_y2 - clip_y1));
-					wld_blend_region(renderer, part->buffer,
-					                 tile_x - target_geom->x,
-					                 tile_y - target_geom->y, &source_region);
-					pixman_region32_fini(&source_region);
-				}
-			}
-		}
+	pixman_region32_translate(&region, -x, -y);
+	if (part->opaque) {
+		wld_copy_region(renderer, buffer, x - target_geom->x,
+		                y - target_geom->y, &region);
+	} else {
+		wld_blend_region(renderer, buffer, x - target_geom->x,
+		                 y - target_geom->y, &region);
 	}
 
 	pixman_region32_fini(&region);
