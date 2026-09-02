@@ -2076,12 +2076,25 @@ compositor_render_to_shm(struct screen *screen)
 
 		if (src &&
 		    (wld_capabilities(swc.shm->renderer, src) & WLD_CAPABILITY_READ)) {
-			int32_t x = view->base.geometry.x - screen->base.geometry.x;
-			int32_t y = view->base.geometry.y - screen->base.geometry.y;
+			const struct swc_rectangle *geom = &view->base.geometry;
+			int32_t src_x = view->window ? view->buffer_offset_x : 0;
+			int32_t src_y = view->window ? view->buffer_offset_y : 0;
+			int32_t dst_x = geom->x - src_x - screen->base.geometry.x;
+			int32_t dst_y = geom->y - src_y - screen->base.geometry.y;
+			pixman_region32_t source_region;
 
-			wld_copy_rectangle(swc.shm->renderer, src, x, y, 0, 0,
-			                   view->base.geometry.width,
-			                   view->base.geometry.height);
+			pixman_region32_init_rect(&source_region, src_x, src_y, geom->width,
+			                          geom->height);
+			pixman_region32_intersect_rect(&source_region, &source_region, 0, 0,
+			                               src->width, src->height);
+			if (src->format == WLD_FORMAT_ARGB8888) {
+				wld_blend_region(swc.shm->renderer, src, dst_x, dst_y,
+				                 &source_region);
+			} else {
+				wld_copy_region(swc.shm->renderer, src, dst_x, dst_y,
+				                &source_region);
+			}
+			pixman_region32_fini(&source_region);
 		}
 
 		if ((view->border.outwidth > 0 || view->border.inwidth > 0) &&
