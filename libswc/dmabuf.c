@@ -211,7 +211,8 @@ bind_dmabuf(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	    DRM_FORMAT_XRGB8888,
 	    DRM_FORMAT_ARGB8888,
 	};
-	uint64_t modifier = DRM_FORMAT_MOD_INVALID;
+	/*it appears we can only handle linear*/
+	uint64_t modifier = DRM_FORMAT_MOD_LINEAR;
 	struct wl_resource *resource;
 	size_t i;
 
@@ -224,7 +225,6 @@ bind_dmabuf(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	wl_resource_set_implementation(resource, &dmabuf_impl, NULL, NULL);
 	for (i = 0; i < ARRAY_LENGTH(formats); ++i) {
 		if (version >= 3) {
-			/* TODO: need a way to query DRM modifiers of wld */
 			zwp_linux_dmabuf_v1_send_modifier(
 			    resource, formats[i], modifier >> 32, modifier & 0xffffffff);
 		} else {
