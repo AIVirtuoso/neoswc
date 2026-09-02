@@ -1635,6 +1635,12 @@ void
 compositor_view_set_decor(struct compositor_view *view,
                             const struct swc_decor *decor)
 {
+	/* decor_view_set() could shrink or remove the decoration, so wedamage the old
+	 * extents before they are replaced */
+	if (view->visible) {
+		damage_below_view(view);
+	}
+
 	decor_view_set(view, decor);
 	update_extents(view);
 	update(&view->base);
