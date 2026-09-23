@@ -1596,9 +1596,13 @@ void
 compositor_view_set_border_width(struct compositor_view *view,
                                  uint32_t outwidth, uint32_t inwidth)
 {
+	pixman_box32_t old_extents;
+
 	if (view->border.outwidth == outwidth && view->border.inwidth == inwidth) {
 		return;
 	}
+
+	old_extents = view->extents;
 
 	view->border.outwidth = outwidth;
 	view->border.damaged_border1 = true;
@@ -1609,6 +1613,24 @@ compositor_view_set_border_width(struct compositor_view *view,
 	/* XXX: Damage above surface for transparent surfaces? */
 
 	update_extents(view);
+
+	/* Damage old extents to prevent leftover border artifacts */
+	if (view->visible &&
+	    (old_extents.x1 != view->extents.x1 ||
+	     old_extents.y1 != view->extents.y1 ||
+	     old_extents.x2 != view->extents.x2 ||
+	     old_extents.y2 != view->extents.y2)) {
+		pixman_region32_t old_region, new_region;
+
+		pixman_region32_init_with_extents(&old_region, &old_extents);
+		pixman_region32_init_with_extents(&new_region, &view->extents);
+		pixman_region32_subtract(&old_region, &old_region, &new_region);
+		pixman_region32_union(&compositor.damage, &compositor.damage,
+		                      &old_region);
+		pixman_region32_fini(&old_region);
+		pixman_region32_fini(&new_region);
+	}
+
 	update(&view->base);
 }
 
