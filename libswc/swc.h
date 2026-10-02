@@ -49,6 +49,16 @@ bool
 swc_cursor_position(int32_t *x, int32_t *y);
 
 /**
+ * Set the cursor position.
+ *
+ * The coordinates are in compositor-global space, exposed as raw int32_t
+ * to avoid needing wayland headers. This has the same effect as the
+ * cursor being moved there by an input device.
+ */
+bool
+swc_cursor_set_position(int32_t x, int32_t y);
+
+/**
  * Send a pointer button event to the currently focused client.
  *
  * This is intended for window managers which intercept button events (for

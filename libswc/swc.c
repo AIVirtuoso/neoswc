@@ -153,6 +153,20 @@ swc_cursor_position(int32_t *x, int32_t *y)
 }
 
 EXPORT bool
+swc_cursor_set_position(int32_t x, int32_t y)
+{
+	if (!swc.seat || !swc.seat->pointer) {
+		return false;
+	}
+
+	pointer_handle_absolute_motion(swc.seat->pointer, get_time(),
+	                               wl_fixed_from_int(x), wl_fixed_from_int(y));
+	pointer_handle_frame(swc.seat->pointer);
+
+	return true;
+}
+
+EXPORT bool
 swc_initialize(struct wl_display *display, struct wl_event_loop *event_loop,
                const struct swc_manager *manager)
 {
