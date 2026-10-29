@@ -102,8 +102,10 @@ open_display(void)
 	goto begin;
 
 retry2:
+#ifdef __linux__
 	close(xserver.abstract_fd);
 retry1:
+#endif
 	unlink(lock_name);
 retry0:
 	if (++xserver.display > 32) {
