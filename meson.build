@@ -98,6 +98,9 @@ if xwayland.found()
 endif
 
 input_backend = get_option('input')
+if os == 'openbsd' and input_backend == 'libinput'
+  error('OpenBSD should use the wscons input backend until libopeninput is good enough')
+endif
 libinput = dependency('libinput', version: '>=0.4', required: input_backend == 'libinput')
 
 if input_backend == 'auto'
