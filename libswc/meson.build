@@ -38,7 +38,7 @@ libswc_src = files(
   'xdg_shell.c',
 
   input_backend == 'libinput' ? 'seat.c' : [],
-  input_backend == 'wscons' ? 'seat-ws.c' : [],
+  input_backend == 'wscons' ? 'seat_ws.c' : [],
 
   xwayland.found() ? ['xserver.c', 'xwm.c'] : [],  
 

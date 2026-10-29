@@ -1,4 +1,4 @@
-/* swc: libswc/seat-ws.c
+/* swc: libswc/seat_ws.c
  *
  * Copyright (c) 2013, 2014 Michael Forney
  * Copyright (c) 2019 Nia Alarie
