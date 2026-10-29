@@ -313,15 +313,15 @@ handle_ws_data(int fd, uint32_t mask, void *data)
 			break;
 		case WSCONS_EVENT_MOUSE_DELTA_Z:
 			pos = wl_fixed_from_int(ev.value * 10);
-			pointer_handle_axis(seat->base.pointer, time,
-			                    WL_POINTER_AXIS_VERTICAL_SCROLL,
-			                    WL_POINTER_AXIS_SOURCE_WHEEL, pos, pos * 12);
+			pointer_handle_axis(
+			    seat->base.pointer, time, WL_POINTER_AXIS_VERTICAL_SCROLL,
+			    WL_POINTER_AXIS_SOURCE_WHEEL, pos, ev.value * 120);
 			break;
 		case WSCONS_EVENT_MOUSE_DELTA_W:
 			pos = wl_fixed_from_int(ev.value * 10);
-			pointer_handle_axis(seat->base.pointer, time,
-			                    WL_POINTER_AXIS_HORIZONTAL_SCROLL,
-			                    WL_POINTER_AXIS_SOURCE_WHEEL, pos, pos * 12);
+			pointer_handle_axis(
+			    seat->base.pointer, time, WL_POINTER_AXIS_HORIZONTAL_SCROLL,
+			    WL_POINTER_AXIS_SOURCE_WHEEL, pos, ev.value * 120);
 			break;
 		case WSCONS_EVENT_MOUSE_ABSOLUTE_X:
 			pos = wl_fixed_from_int(ev.value);
@@ -332,6 +332,7 @@ handle_ws_data(int fd, uint32_t mask, void *data)
 			pointer_handle_absolute_motion(seat->base.pointer, time, 0, pos);
 			break;
 		}
+		pointer_handle_frame(seat->base.pointer);
 	}
 	return 0;
 }
