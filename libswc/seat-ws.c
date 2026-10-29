@@ -47,6 +47,7 @@
 #include <dev/wscons/wsconsio.h>
 #include <dev/wscons/wsksymdef.h>
 #include <sys/ioctl.h>
+#include <time.h>
 
 /* Map wscons encodings to libxkbcommon layout names. */
 struct ws_xkb_map {
@@ -205,20 +206,29 @@ bind_seat(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 static int
 ws_to_xkb(unsigned type, int key)
 {
+	const uint8_t *map;
+	size_t count;
+
 	switch (type) {
 	case WSKBD_TYPE_PC_XT:
 	case WSKBD_TYPE_PC_AT:
-		return wsXtMap[key];
+		map = wsXtMap;
+		count = sizeof(wsXtMap);
+		break;
 	case WSKBD_TYPE_USB:
 #ifdef WSKBD_TYPE_MAPLE
 	case WSKBD_TYPE_MAPLE:
-		return wsUsbMap[key];
 #endif
-		return wsUsbMap[key];
+		map = wsUsbMap;
+		count = sizeof(wsUsbMap);
+		break;
 	default:
-		fprintf(stderr, "Unknown wskbd type %d\n", type);
-		return key;
+		return -1;
 	}
+
+	if (key < 0 || (size_t)key >= count || map[key] == KEY_NOTUSED)
+		return -1;
+	return map[key];
 }
 
 static int
@@ -241,24 +251,25 @@ handle_ws_data(int fd, uint32_t mask, void *data)
 	struct seat *seat = data;
 	struct wscons_event ev;
 
-	while (!seat->ignore && (read(fd, &ev, sizeof(ev))) != -1) {
+	while (!seat->ignore && read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
 		uint32_t state, time;
 		int key;
 		wl_fixed_t pos;
 
-		time = ev.time.tv_sec + (ev.time.tv_nsec / 1000000L);
+		time = (uint32_t)(ev.time.tv_sec * 1000ULL +
+		                    ev.time.tv_nsec / 1000000L);
 		switch (ev.type) {
 		case WSCONS_EVENT_KEY_UP:
-			state = WL_KEYBOARD_KEY_STATE_RELEASED;
-			key = ws_to_xkb(seat->kbd_type, ev.value);
-			keyboard_handle_key(seat->base.keyboard, time, key, state);
-			break;
 		case WSCONS_EVENT_KEY_DOWN:
-			state = WL_KEYBOARD_KEY_STATE_PRESSED;
+			state = ev.type == WSCONS_EVENT_KEY_DOWN ?
+			    WL_KEYBOARD_KEY_STATE_PRESSED :
+			    WL_KEYBOARD_KEY_STATE_RELEASED;
 			key = ws_to_xkb(seat->kbd_type, ev.value);
-			keyboard_handle_key(seat->base.keyboard, time, key, state);
+			if (key >= 0)
+				keyboard_handle_key(seat->base.keyboard, time, key, state);
 			break;
 		case WSCONS_EVENT_ALL_KEYS_UP:
+			keyboard_reset(seat->base.keyboard);
 			break;
 		case WSCONS_EVENT_MOUSE_UP:
 			state = WL_POINTER_BUTTON_STATE_RELEASED;
@@ -358,6 +369,8 @@ initialize_wscons(struct seat *seat)
 		ERROR("Could not get keyboard type\n");
 		goto error2;
 	}
+	/* TODO handle mixed keyboard types with wsmux?
+	   see: https://www.mail-archive.com/ports%40openbsd.org/msg134646.html */
 
 	if (ioctl(seat->kbd_fd, WSKBDIO_GETENCODING, &encoding) != -1) {
 		encoding_layout = KB_ENCODING(encoding);
@@ -417,6 +430,21 @@ seat_create(struct wl_display *display, const char *seat_name)
 
 	if (!initialize_wscons(seat)) {
 		goto error2;
+	}
+
+	/* TODO other way */
+	{
+		const char *s;
+		if ((s = getenv("XKB_DEFAULT_RULES")) && *s)
+			seat->names.rules = s;
+		if ((s = getenv("XKB_DEFAULT_MODEL")) && *s)
+			seat->names.model = s;
+		if ((s = getenv("XKB_DEFAULT_LAYOUT")) && *s)
+			seat->names.layout = s;
+		if ((s = getenv("XKB_DEFAULT_VARIANT")) && *s)
+			seat->names.variant = s;
+		if ((s = getenv("XKB_DEFAULT_OPTIONS")) && *s)
+			seat->names.options = s;
 	}
 
 	seat->global =

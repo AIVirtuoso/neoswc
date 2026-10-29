@@ -74,6 +74,12 @@
 #include <xf86drm.h>
 #endif
 
+#ifdef __OpenBSD__
+/* required by the runtime for setuid executables */
+__attribute__((visibility("default")))
+mode_t _permit_setugid = S_ISUID;
+#endif
+
 #define ARRAY_LENGTH(array) (sizeof(array) / sizeof(array)[0])
 
 static void
@@ -89,6 +95,7 @@ static int drm_fds[16], num_drm_fds;
 #endif
 static int tty_fd;
 static bool active;
+static pid_t child_pid = -1;
 
 static struct {
 	bool altered;
@@ -166,9 +173,7 @@ stop_devices(bool fatal)
 static void
 cleanup(void)
 {
-#ifndef __OpenBSD__
 	struct vt_mode mode = {.mode = VT_AUTO};
-#endif
 
 	if (!original_vt_state.altered) {
 		return;
@@ -178,18 +183,16 @@ cleanup(void)
 	 * DRM device before the next session tries to claim it. */
 	stop_devices(false);
 
-	/* Cleanup VT */
-#ifndef __OpenBSD__
+	/* stop VT signal delivery before restoring tty */
 	ioctl(tty_fd, VT_SETMODE, &mode);
+#ifndef __OpenBSD__
 	ioctl(tty_fd, KDSKBMODE, original_vt_state.kb_mode);
 #endif
 	ioctl(tty_fd, KDSETMODE, original_vt_state.console_mode);
-
-#ifndef __OpenBSD__
 	ioctl(tty_fd, VT_ACTIVATE, original_vt_state.vt);
-#endif
-
-	kill(0, SIGTERM);
+	original_vt_state.altered = false;
+	if (child_pid > 0)
+		kill(child_pid, SIGTERM);
 }
 
 static void
@@ -424,13 +427,16 @@ setup_tty(int fd)
 {
 	struct stat st;
 	int vt;
-#if !defined (__OpenBSD__) && !defined(__FreeBSD__)
+#if !defined(__FreeBSD__)
 	struct vt_stat state;
-	#endif
-#if !defined(__OpenBSD__)
-	struct vt_mode mode = {
-	    .mode = VT_PROCESS, .relsig = SIGUSR1, .acqsig = SIGUSR2};
 #endif
+	struct vt_mode mode = {
+	    .mode = VT_PROCESS, .relsig = SIGUSR1, .acqsig = SIGUSR2,
+#ifdef __OpenBSD__
+	    /* wsdisplay validates frsig but is unused */
+	    .frsig = SIGUSR1,
+#endif
+	};
 
 	if (fstat(fd, &st) == -1) {
 		die("failed to stat TTY fd:");
@@ -447,10 +453,7 @@ setup_tty(int fd)
 	}
 #endif
 
-#if defined(__OpenBSD__)
-	/* OpenBSD wscons has no VT_GETSTATE */
-	original_vt_state.vt=vt;
-#elif defined(__FreeBSD__)
+#if defined(__FreeBSD__)
 	{
 	  int vt_num;
 	  if (ioctl(fd, VT_GETACTIVE, &vt_num) == -1)
@@ -465,10 +468,12 @@ setup_tty(int fd)
 	}
 #endif
 
-#if !defined (__OpenBSD__) && !defined(__FreeBSD__)
+#if !defined(__FreeBSD__)
 	original_vt_state.vt = state.v_active;
-#else
-	original_vt_state.vt = vt;
+#endif
+#ifdef __OpenBSD__
+	/* VT ioctl api expects it to start from 1 */
+	++vt;
 #endif
 
 #ifdef KDGETMODE
@@ -497,7 +502,7 @@ setup_tty(int fd)
 		goto error0;
 	}
 
-#if !defined (__OpenBSD__) && !defined (__FreeBSD__)
+#ifndef __FreeBSD__
 	if (ioctl(fd, VT_SETMODE, &mode) == -1) {
 		perror("failed to set VT mode");
 		goto error1;
@@ -505,7 +510,10 @@ setup_tty(int fd)
 #endif
 
 #ifdef __OpenBSD__
-	/* OpenBSD wscons has no VT_PROCESS mode; just cont. on current ttyC* */
+	if (vt != original_vt_state.vt) {
+		fprintf(stderr, "OpenBSD: start on the active ttyC console\n");
+		goto error2;
+	}
 	activate();
 #else
 	if (vt == original_vt_state.vt) {
@@ -526,11 +534,13 @@ setup_tty(int fd)
 
 	return;
 
-#ifndef __OpenBSD__
+#ifndef __FreeBSD__
 error2:
 	mode = (struct vt_mode){.mode = VT_AUTO};
 	ioctl(fd, VT_SETMODE, &mode);
 error1:
+#endif
+#ifndef __OpenBSD__
 	ioctl(fd, KDSKBMODE, original_vt_state.kb_mode);
 #endif
 error0:
@@ -656,7 +666,7 @@ main(int argc, char *argv[])
 		die("setenv %s:", SWC_LAUNCH_TTY_ENV);
 	}
 
-	sprintf(buf, "%d", sock[1]);
+	snprintf(buf, sizeof(buf), "%d", sock[1]);
 	setenv(SWC_LAUNCH_SOCKET_ENV, buf, 1);
 
 	/* make sure XDG_RUNTIME_DIR is set */
@@ -685,6 +695,7 @@ main(int argc, char *argv[])
 	                          environ))) {
 		die("posix_spawnp %s:", argv[optind]);
 	}
+	child_pid = pid;
 	posix_spawnattr_destroy(&attr);
 
 	close(sock[1]);

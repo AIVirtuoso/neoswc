@@ -274,8 +274,9 @@ xserver_initialize(void)
 		/* Unset the FD_CLOEXEC flag on the FDs that will get passed to
 		 * Xwayland. */
 		for (index = 0; index < ARRAY_LENGTH(fds); ++index) {
-#if defined(__FreeBSD__)
-		  if (fds[index]==-1) continue;
+#if defined(__FreeBSD__) || defined(__OpenBSD__)
+			if (fds[index] == -1)
+				continue;
 #endif
 			if (fcntl(fds[index], F_SETFD, 0) != 0) {
 				ERROR("fcntl() failed: %s\n", strerror(errno));
