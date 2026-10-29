@@ -451,7 +451,7 @@ find_cursor_and_mask(const char *name,
 {
 	int i;
 	char mask_name[100];
-	sprintf(mask_name, "%s_mask", name);
+	snprintf(mask_name, sizeof(mask_name), "%s_mask", name);
 
 	*cursor = *mask = NULL;
 
