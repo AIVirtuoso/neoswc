@@ -49,6 +49,16 @@
 #include <sys/ioctl.h>
 #include <time.h>
 
+#ifdef __OpenBSD__
+struct ws_keyboards;
+struct ws_keyboards *
+ws_keyboards_open(struct keyboard **, const bool *, kbd_t *);
+void
+ws_keyboards_reset(struct ws_keyboards *);
+void
+ws_keyboards_close(struct ws_keyboards *);
+#endif
+
 /* Map wscons encodings to libxkbcommon layout names. */
 struct ws_xkb_map {
 	const int ws;
@@ -75,15 +85,20 @@ struct seat {
 	uint32_t capabilities;
 
 	int mouse_fd;
-	int kbd_fd;
 	bool ignore;
-
+#ifdef __OpenBSD__
+	struct ws_keyboards *keyboards;
+#else
+	int kbd_fd;
 	unsigned kbd_type;
+#endif
 
 	struct xkb_rule_names names;
 
 	struct wl_event_source *mouse_source;
+#ifndef __OpenBSD__
 	struct wl_event_source *kbd_source;
+#endif
 
 	struct wl_listener swc_listener;
 
@@ -142,6 +157,9 @@ handle_swc_event(struct wl_listener *listener, void *data)
 	case SWC_EVENT_DEACTIVATED:
 		seat->ignore = true;
 		keyboard_reset(seat->base.keyboard);
+#ifdef __OpenBSD__
+		ws_keyboards_reset(seat->keyboards);
+#endif
 		break;
 	case SWC_EVENT_ACTIVATED:
 		seat->ignore = false;
@@ -203,7 +221,7 @@ bind_seat(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 	wl_seat_send_capabilities(resource, seat->capabilities);
 }
 
-static int
+int
 ws_to_xkb(unsigned type, int key)
 {
 	const uint8_t *map;
@@ -226,8 +244,9 @@ ws_to_xkb(unsigned type, int key)
 		return -1;
 	}
 
-	if (key < 0 || (size_t)key >= count || map[key] == KEY_NOTUSED)
+	if (key < 0 || (size_t)key >= count || map[key] == KEY_NOTUSED) {
 		return -1;
+	}
 	return map[key];
 }
 
@@ -256,21 +275,24 @@ handle_ws_data(int fd, uint32_t mask, void *data)
 		int key;
 		wl_fixed_t pos;
 
-		time = (uint32_t)(ev.time.tv_sec * 1000ULL +
-		                    ev.time.tv_nsec / 1000000L);
+		time =
+		    (uint32_t)(ev.time.tv_sec * 1000ULL + ev.time.tv_nsec / 1000000L);
 		switch (ev.type) {
+#ifndef __OpenBSD__
 		case WSCONS_EVENT_KEY_UP:
 		case WSCONS_EVENT_KEY_DOWN:
-			state = ev.type == WSCONS_EVENT_KEY_DOWN ?
-			    WL_KEYBOARD_KEY_STATE_PRESSED :
-			    WL_KEYBOARD_KEY_STATE_RELEASED;
+			state = ev.type == WSCONS_EVENT_KEY_DOWN
+			            ? WL_KEYBOARD_KEY_STATE_PRESSED
+			            : WL_KEYBOARD_KEY_STATE_RELEASED;
 			key = ws_to_xkb(seat->kbd_type, ev.value);
-			if (key >= 0)
+			if (key >= 0) {
 				keyboard_handle_key(seat->base.keyboard, time, key, state);
+			}
 			break;
 		case WSCONS_EVENT_ALL_KEYS_UP:
 			keyboard_reset(seat->base.keyboard);
 			break;
+#endif
 		case WSCONS_EVENT_MOUSE_UP:
 			state = WL_POINTER_BUTTON_STATE_RELEASED;
 			key = wsmouse_to_evdev(ev.value);
@@ -292,14 +314,14 @@ handle_ws_data(int fd, uint32_t mask, void *data)
 		case WSCONS_EVENT_MOUSE_DELTA_Z:
 			pos = wl_fixed_from_int(ev.value * 10);
 			pointer_handle_axis(seat->base.pointer, time,
-				WL_POINTER_AXIS_VERTICAL_SCROLL,
-				WL_POINTER_AXIS_SOURCE_WHEEL, pos, pos * 12);
+			                    WL_POINTER_AXIS_VERTICAL_SCROLL,
+			                    WL_POINTER_AXIS_SOURCE_WHEEL, pos, pos * 12);
 			break;
 		case WSCONS_EVENT_MOUSE_DELTA_W:
 			pos = wl_fixed_from_int(ev.value * 10);
 			pointer_handle_axis(seat->base.pointer, time,
-				WL_POINTER_AXIS_HORIZONTAL_SCROLL,
-				WL_POINTER_AXIS_SOURCE_WHEEL, pos, pos * 12);
+			                    WL_POINTER_AXIS_HORIZONTAL_SCROLL,
+			                    WL_POINTER_AXIS_SOURCE_WHEEL, pos, pos * 12);
 			break;
 		case WSCONS_EVENT_MOUSE_ABSOLUTE_X:
 			pos = wl_fixed_from_int(ev.value);
@@ -320,11 +342,11 @@ initialize_wscons(struct seat *seat)
 #ifdef WSMOUSE_EVENT_VERSION
 	int mouse_ver = WSMOUSE_EVENT_VERSION;
 #endif
-#ifdef WSKBDIO_EVENT_VERSION
+#if !defined(__OpenBSD__) && defined(WSKBDIO_EVENT_VERSION)
 	int kbd_ver = WSKBDIO_EVENT_VERSION;
 #endif
 	int encoding_layout;
-	kbd_t encoding;
+	kbd_t encoding = 0;
 	unsigned i;
 
 	if ((seat->mouse_fd =
@@ -332,16 +354,24 @@ initialize_wscons(struct seat *seat)
 		ERROR("Could not open mouse device\n");
 		goto error0;
 	}
+#ifdef __OpenBSD__
+	seat->keyboards =
+	    ws_keyboards_open(&seat->base.keyboard, &seat->ignore, &encoding);
+	if (!seat->keyboards) {
+		goto error1;
+	}
+#else
 	if ((seat->kbd_fd =
 	         launch_open_device("/dev/wskbd", O_RDWR | O_NONBLOCK)) == -1) {
 		ERROR("Could not open keyboard device\n");
 		goto error1;
 	}
+#endif
 
 #ifdef WSMOUSEIO_SETVERSION
 	(void)ioctl(seat->mouse_fd, WSMOUSEIO_SETVERSION, &mouse_ver);
 #endif
-#ifdef WSKBDIO_SETVERSION
+#if !defined(__OpenBSD__) && defined(WSKBDIO_SETVERSION)
 	(void)ioctl(seat->kbd_fd, WSKBDIO_SETVERSION, &kbd_ver);
 #endif
 
@@ -355,6 +385,7 @@ initialize_wscons(struct seat *seat)
 		}
 	}
 #endif /* WSMOUSEIO_SETMODE */
+#ifndef __OpenBSD__
 #ifdef WSKBDIO_SETMODE
 	{
 		int mode = WSKBD_TRANSLATED; /* use translated mode for key events */
@@ -373,6 +404,9 @@ initialize_wscons(struct seat *seat)
 	   see: https://www.mail-archive.com/ports%40openbsd.org/msg134646.html */
 
 	if (ioctl(seat->kbd_fd, WSKBDIO_GETENCODING, &encoding) != -1) {
+#else
+	if (encoding) {
+#endif
 		encoding_layout = KB_ENCODING(encoding);
 		for (i = 0; ws_xkb_encodings[i].xkb != NULL; ++i) {
 			if (ws_xkb_encodings[i].ws == encoding_layout) {
@@ -397,10 +431,15 @@ initialize_wscons(struct seat *seat)
 	}
 
 	return true;
+#ifndef __OpenBSD__
 error2:
 	close(seat->kbd_fd);
+#endif
 error1:
 	close(seat->mouse_fd);
+#ifdef __OpenBSD__
+	seat->mouse_fd = -1;
+#endif
 error0:
 	return false;
 }
@@ -410,12 +449,11 @@ seat_create(struct wl_display *display, const char *seat_name)
 {
 	struct seat *seat;
 
-	seat = malloc(sizeof(*seat));
+	seat = calloc(1, sizeof(*seat));
 	if (!seat) {
 		goto error0;
 	}
-
-	seat->ignore = false;
+	seat->mouse_fd = -1;
 	memset(&seat->names, 0, sizeof(seat->names));
 	seat->names.rules = "base";
 	seat->names.model = "pc105";
@@ -435,16 +473,21 @@ seat_create(struct wl_display *display, const char *seat_name)
 	/* TODO other way */
 	{
 		const char *s;
-		if ((s = getenv("XKB_DEFAULT_RULES")) && *s)
+		if ((s = getenv("XKB_DEFAULT_RULES")) && *s) {
 			seat->names.rules = s;
-		if ((s = getenv("XKB_DEFAULT_MODEL")) && *s)
+		}
+		if ((s = getenv("XKB_DEFAULT_MODEL")) && *s) {
 			seat->names.model = s;
-		if ((s = getenv("XKB_DEFAULT_LAYOUT")) && *s)
+		}
+		if ((s = getenv("XKB_DEFAULT_LAYOUT")) && *s) {
 			seat->names.layout = s;
-		if ((s = getenv("XKB_DEFAULT_VARIANT")) && *s)
+		}
+		if ((s = getenv("XKB_DEFAULT_VARIANT")) && *s) {
 			seat->names.variant = s;
-		if ((s = getenv("XKB_DEFAULT_OPTIONS")) && *s)
+		}
+		if ((s = getenv("XKB_DEFAULT_OPTIONS")) && *s) {
 			seat->names.options = s;
+		}
 	}
 
 	seat->global =
@@ -483,21 +526,38 @@ seat_create(struct wl_display *display, const char *seat_name)
 	}
 	seat->base.pointer = &seat->pointer;
 
+#ifndef __OpenBSD__
 	seat->kbd_source = wl_event_loop_add_fd(
 	    swc.event_loop, seat->kbd_fd, WL_EVENT_READABLE, &handle_ws_data, seat);
+#endif
 	seat->mouse_source =
 	    wl_event_loop_add_fd(swc.event_loop, seat->mouse_fd, WL_EVENT_READABLE,
 	                         &handle_ws_data, seat);
+#ifdef __OpenBSD__
+	if (!seat->mouse_source) {
+		pointer_finalize(&seat->pointer);
+		goto error5;
+	}
+#endif
 
 	return &seat->base;
 
 error5:
 	keyboard_destroy(seat->base.keyboard);
+#ifdef __OpenBSD__
+	seat->base.keyboard = NULL;
+#endif
 error4:
 	data_device_destroy(seat->base.data_device);
 error3:
 	wl_global_destroy(seat->global);
 error2:
+#ifdef __OpenBSD__
+	ws_keyboards_close(seat->keyboards);
+	if (seat->mouse_fd >= 0) {
+		close(seat->mouse_fd);
+	}
+#endif
 	free(seat->name);
 error1:
 	free(seat);
@@ -511,11 +571,15 @@ seat_destroy(struct swc_seat *seat_base)
 	struct seat *seat = wl_container_of(seat_base, seat, base);
 
 	wl_event_source_remove(seat->mouse_source);
-	wl_event_source_remove(seat->kbd_source);
 	close(seat->mouse_fd);
 	seat->mouse_fd = -1;
+#ifdef __OpenBSD__
+	ws_keyboards_close(seat->keyboards);
+#else
+	wl_event_source_remove(seat->kbd_source);
 	close(seat->kbd_fd);
 	seat->kbd_fd = -1;
+#endif
 
 	pointer_finalize(&seat->pointer);
 	keyboard_destroy(seat->base.keyboard);
