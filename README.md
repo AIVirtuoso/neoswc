@@ -48,6 +48,14 @@ samu -C build
 sudo samu -C build install
 ```
 
+openbsd
+_______
+you need to make sure xenocara is stopped. this includes xenodm which you can close with `rcctl stop xenodm # disable permanent and after reboot`; this is because openbsd doesnt support handing off the drm device yet.
+
+you also need to own `/dev/dri/card0` and any keyboard or mouse devices in `/dev/wskbdN` and `/dev/wsmouseN`. we do not use the general keyboard multiplexer as its not suitable for wayland yet.
+
+for persistent ownership of said devices, you can check the fbtab(5) in `/etc/fbtab`
+
 credits
 -------
 an extremely large thank you to [michael forney](https://mforney.org) for creating the original [swc](https://github.com/michaelforney/swc) and [wld](https://github.com/michaelforney/wld), without his amazing work none of this would be possible! once they are more stable, we hope some of the changes from our neu* forks will eventually be upstreamed into the original projects.
